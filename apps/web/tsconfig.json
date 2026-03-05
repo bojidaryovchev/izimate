@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "outDir": "dist",
+    "plugins": [{ "name": "next" }],
+    "paths": {
+      "@/*": ["./src/*"],
+      "@izimate/shared": ["../../packages/shared/src"],
+      "@izimate/shared/*": ["../../packages/shared/src/*"],
+      "@izimate/api-client": ["../../packages/api-client/src"],
+      "@izimate/api-client/*": ["../../packages/api-client/src/*"]
+    }
+  },
+  "include": ["src", "app", "next-env.d.ts"],
+  "exclude": ["node_modules", ".next", "dist"]
+}

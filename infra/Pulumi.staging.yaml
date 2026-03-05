@@ -1,0 +1,4 @@
+config:
+  aws:region: us-east-1
+  izimate:environment: staging
+  izimate:domain: staging.izimate.com

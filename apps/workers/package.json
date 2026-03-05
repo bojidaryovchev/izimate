@@ -1,0 +1,19 @@
+{
+  "name": "@izimate/workers",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/email.ts src/push.ts src/cron/push-receipts.ts src/cron/cleanup.ts --bundle --platform=node --target=node22 --format=esm --outdir=dist --external:@aws-sdk/*",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@izimate/shared": "workspace:*",
+    "@izimate/db": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}

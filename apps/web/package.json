@@ -1,0 +1,21 @@
+{
+  "name": "@izimate/web",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "echo 'Web build requires next — install in Phase 11'",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "clean": "rimraf .next dist"
+  },
+  "dependencies": {
+    "@izimate/shared": "workspace:*",
+    "@izimate/api-client": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "typescript": "^5.7.0"
+  }
+}
