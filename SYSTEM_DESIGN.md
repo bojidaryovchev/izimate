@@ -467,27 +467,9 @@ Note: The `/api/auth/*` route handlers (login, callback, logout) are the **only*
 
 ### JWT Verification (All Server-Side Services)
 
-```typescript
-// packages/db/src/auth.ts (server-side only — avoids bundling jose in clients)
-import { jwtVerify, createRemoteJWKSet } from 'jose';
+A shared `verifyToken()` function in `@izimate/db` uses `jose` to verify Auth0 JWTs via JWKS endpoint. Used identically in Lambda API (Fastify middleware), Fargate (Socket.io `connection` handler), and worker Lambdas. Same function, same Fastify plugin — one framework, one auth pattern. Lives in `@izimate/db` (not `@izimate/shared`) because `jose` is only needed server-side.
 
-const AUTH0_DOMAIN = process.env.AUTH0_DOMAIN!;
-const AUTH0_AUDIENCE = process.env.AUTH0_AUDIENCE!;
-
-const JWKS = createRemoteJWKSet(
-  new URL(`https://${AUTH0_DOMAIN}/.well-known/jwks.json`)
-);
-
-export async function verifyToken(token: string) {
-  const { payload } = await jwtVerify(token, JWKS, {
-    issuer: `https://${AUTH0_DOMAIN}/`,
-    audience: AUTH0_AUDIENCE,
-  });
-  return payload;
-}
-```
-
-Used identically in Lambda API (Fastify middleware), Fargate (Socket.io `connection` handler), and worker Lambdas (if needed). Same `verifyToken()` function, same Fastify plugin — one framework, one auth pattern. Lives in `@izimate/db` (not `@izimate/shared`) because `jose` is only needed server-side.
+> See [IMPLEMENTATION_PATTERNS.md § 1](./IMPLEMENTATION_PATTERNS.md#1-auth--jwt-verification) for the code pattern.
 
 ---
 
@@ -510,109 +492,19 @@ Used identically in Lambda API (Fastify middleware), Fargate (Socket.io `connect
 
 ### Route Structure
 
-```typescript
-// apps/api/src/index.ts
-import Fastify from 'fastify';
-import awsLambdaFastify from '@fastify/aws-lambda';
-import cors from '@fastify/cors';
-import {
-  serializerCompiler,
-  validatorCompiler,
-  type ZodTypeProvider,
-} from 'fastify-type-provider-zod';
-import { authPlugin } from './middleware/auth';
-import { usersRoutes } from './routes/users';
-import { uploadsRoutes } from './routes/uploads';
-import { webhookRoute } from './routes/webhooks';
-// ... domain route modules
+Single Fastify app with Zod type provider, exported as a Lambda handler via `@fastify/aws-lambda`. Two registration scopes:
+- **Webhook routes** (`/webhooks/*`) — unauthenticated, uses signature verification
+- **API routes** (`/api/*`) — JWT-authenticated via `authPlugin`, each domain registers as a Fastify plugin with its own prefix
 
-const app = Fastify().withTypeProvider<ZodTypeProvider>();
-app.setValidatorCompiler(validatorCompiler);
-app.setSerializerCompiler(serializerCompiler);
+New features add route modules here — same pattern, same middleware.
 
-await app.register(cors, { origin: ['https://izimate.com', /localhost/] });
+### Validation & Type Safety
 
-// Webhooks — NO auth (uses signature verification)
-await app.register(webhookRoute, { prefix: '/webhooks' });
+Routes define Zod schemas for `querystring`, `body`, and `response`. Fastify validates automatically before the handler runs, and TypeScript infers types from the schemas.
 
-// All /api/* routes — JWT auth required
-await app.register(async (authedApp) => {
-  await authedApp.register(authPlugin);
-  await authedApp.register(usersRoutes,   { prefix: '/api/users' });
-  await authedApp.register(uploadsRoutes, { prefix: '/api/uploads' });
-  // ... domain routes registered here with /api/ prefix
-});
+Types flow end-to-end: `@izimate/shared` Zod schemas → API route validation → `@izimate/api-client` return types. One source of truth, no code generation.
 
-await app.ready();
-export const handler = awsLambdaFastify(app);
-```
-
-### Route Example with Zod Validation
-
-```typescript
-// apps/api/src/routes/resources.ts
-import { z } from 'zod';
-import { type FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
-import { ResourceSchema, CreateResourceSchema } from '@izimate/shared';
-import { db, resources } from '@izimate/db';
-
-export const resourcesRoutes: FastifyPluginAsyncZod = async (app) => {
-  app.get('/', {
-    schema: {
-      querystring: z.object({
-        status: z.string().optional(),
-        limit: z.coerce.number().default(20),
-        offset: z.coerce.number().default(0),
-      }),
-      response: { 200: z.array(ResourceSchema) },
-    },
-    handler: async (req) => {
-      // req.query is fully typed: { status?: string, limit: number, ... }
-      return db.select().from(resources).where(/* ... */);
-    },
-  });
-
-  app.post('/', {
-    schema: {
-      body: CreateResourceSchema,  // Zod schema from @izimate/shared
-      response: { 201: ResourceSchema },
-    },
-    handler: async (req, reply) => {
-      // req.body is fully typed and validated before handler runs
-      const [resource] = await db.insert(resources).values(req.body).returning();
-      return reply.code(201).send(resource);
-    },
-  });
-};
-```
-
-### Type-Safe Client (Shared Zod Schemas)
-
-```typescript
-// packages/api-client/src/http/resources.ts
-import { z } from 'zod';
-import { ResourceSchema, CreateResourceSchema } from '@izimate/shared';
-import { apiClient } from './client';
-
-type Resource = z.infer<typeof ResourceSchema>;
-
-export const resourcesApi = {
-  list: (params?: { status?: string }) =>
-    apiClient.get<Resource[]>('/api/resources', { params }),
-
-  get: (id: string) =>
-    apiClient.get<Resource>(`/api/resources/${id}`),
-
-  create: (data: z.infer<typeof CreateResourceSchema>) =>
-    apiClient.post<Resource>('/api/resources', data),
-};
-
-// Usage in mobile/web — typed via shared Zod schemas:
-const { data } = useQuery({ queryKey: ['resources'], queryFn: () => resourcesApi.list() });
-//      ^? Resource[]
-```
-
-Types flow from `@izimate/shared` Zod schemas → API validation → `api-client` return types. One source of truth, no code generation.
+> See [IMPLEMENTATION_PATTERNS.md § 2–4](./IMPLEMENTATION_PATTERNS.md#2-api-server--fastify-bootstrap) for bootstrap, route, and client code patterns.
 
 ### Lambda Configuration
 
@@ -642,84 +534,21 @@ Additional namespaces are added as domain features require them — same pattern
 
 ### SNS Event Subscription
 
-Fargate subscribes to the SNS `events` topic via HTTPS. SNS delivers events to ALB → Fargate:
+Fargate exposes an internal `POST /internal/events` endpoint that receives SNS HTTPS deliveries via the ALB. It handles SNS subscription confirmation automatically. On each event, it parses the `{ namespace, room, type, data }` payload and emits to the appropriate Socket.io room.
 
-```typescript
-// apps/realtime/src/internal/events.ts
+Any Lambda (API, cron, worker) publishes events via a shared `publishEvent()` helper in `@izimate/db` that wraps the SNS `PublishCommand`. Producers never know about Fargate — they just publish to the SNS topic.
 
-// SNS sends Content-Type: text/plain — tell Fastify to parse it as JSON
-app.addContentTypeParser('text/plain', { parseAs: 'string' }, (req, body, done) => {
-  try { done(null, JSON.parse(body as string)); }
-  catch (err) { done(err as Error); }
-});
-
-app.post('/internal/events', async (req, reply) => {
-  // SNS sends subscription confirmation on first setup
-  if (req.headers['x-amz-sns-message-type'] === 'SubscriptionConfirmation') {
-    await fetch(req.body.SubscribeURL);  // Confirm subscription
-    return reply.code(200).send();
-  }
-
-  // Normal event delivery
-  const event = JSON.parse(req.body.Message);
-  const { namespace, room, type, data } = event;
-  io.of(namespace).to(room).emit(type, data);
-  return reply.code(200).send({ ok: true });
-});
-```
-
-Publishing from any Lambda (API, cron, worker):
-```typescript
-// packages/db/src/events.ts (server-side only — uses AWS SDK)
-import { SNSClient, PublishCommand } from '@aws-sdk/client-sns';
-import type { AppEvent } from '@izimate/shared';
-
-const sns = new SNSClient({});
-
-export async function publishEvent(event: AppEvent) {
-  await sns.send(new PublishCommand({
-    TopicArn: process.env.EVENTS_TOPIC_ARN,
-    Message: JSON.stringify(event),
-    MessageAttributes: {
-      eventType: { DataType: 'String', StringValue: event.type },
-    },
-  }));
-}
-
-// Usage:
-await publishEvent({
-  type: 'entity:updated',
-  namespace: '/notifications',
-  room: entity.ownerId,
-  data: entity,
-});
-```
+> See [IMPLEMENTATION_PATTERNS.md § 5–6](./IMPLEMENTATION_PATTERNS.md#5-realtime--sns-event-subscription) for the event handler and publisher code.
 
 ### Sticky Sessions (Day 1)
 
-Socket.io performs an Engine.IO HTTP handshake before upgrading to WebSocket. The handshake and upgrade must hit the same Fargate task. ALB application-based cookie ensures this.
-
-```
-ALB Target Group:
-  Stickiness: Enabled
-  Type: Application-based cookie (AWSALB)
-  Duration: 86400s (1 day)
-```
+Socket.io performs an Engine.IO HTTP handshake before upgrading to WebSocket. The handshake and upgrade must hit the same Fargate task. ALB application-based cookie (`AWSALB`, 1-day duration) ensures this.
 
 ### Redis Pub/Sub Adapter (Day 1)
 
-ElastiCache Redis in the same VPC — sub-millisecond pub/sub for cross-instance message broadcast.
+ElastiCache Redis in the same VPC provides sub-millisecond pub/sub for cross-instance Socket.io message broadcast via the `@socket.io/redis-adapter`.
 
-```typescript
-import { createAdapter } from '@socket.io/redis-adapter';
-import { createClient } from 'redis';
-
-const pubClient = createClient({ url: process.env.REDIS_URL });
-const subClient = pubClient.duplicate();
-await pubClient.connect();
-await subClient.connect();
-io.adapter(createAdapter(pubClient, subClient));
-```
+> See [IMPLEMENTATION_PATTERNS.md § 7](./IMPLEMENTATION_PATTERNS.md#7-realtime--redis-pubsub-adapter) for the adapter setup code.
 
 ### Fargate Task Spec
 
@@ -748,41 +577,9 @@ io.adapter(createAdapter(pubClient, subClient));
 
 ### Drizzle Schema (Source of Truth)
 
-```typescript
-// packages/db/src/schema/users.ts
-import { pgTable, uuid, text, timestamp } from 'drizzle-orm/pg-core';
+Drizzle schema definitions in `@izimate/db` are the single source of truth for database structure. Types are inferred from schema — no separate type definitions needed (`$inferSelect` / `$inferInsert`). Migrations are generated from schema changes via `drizzle-kit` and applied per environment.
 
-export const users = pgTable('users', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  auth0Id: text('auth0_id').notNull().unique(),
-  email: text('email').notNull().unique(),
-  name: text('name').notNull(),
-  avatarUrl: text('avatar_url'),
-  createdAt: timestamp('created_at').defaultNow(),
-  updatedAt: timestamp('updated_at').defaultNow(),
-});
-```
-
-Types are inferred from schema — no separate type definitions needed:
-
-```typescript
-import { users } from '@izimate/db';
-type User = typeof users.$inferSelect;
-type NewUser = typeof users.$inferInsert;
-```
-
-### Migrations
-
-```bash
-# Generate migration from schema changes
-pnpm --filter @izimate/db drizzle-kit generate
-
-# Push to Neon (dev)
-pnpm --filter @izimate/db drizzle-kit push
-
-# Apply migrations (production)
-pnpm --filter @izimate/db drizzle-kit migrate
-```
+> See [IMPLEMENTATION_PATTERNS.md § 8](./IMPLEMENTATION_PATTERNS.md#8-database--drizzle-schema--migrations) for schema, type inference, and migration commands.
 
 ---
 
@@ -799,31 +596,9 @@ Email and push queues are **direct-produce** — services call `queueEmail()` / 
 
 Each queue has a dead-letter queue (DLQ) for failed messages after 3 retries.
 
-```typescript
-// packages/db/src/queue.ts (server-side — used by API Lambda + workers + cron)
-import { SQSClient, SendMessageCommand } from '@aws-sdk/client-sqs';
+Server-side helpers (`queueEmail()`, `queuePush()`) in `@izimate/db` wrap SQS `SendMessageCommand` with typed payloads. Used by API Lambda, cron jobs, and Fargate.
 
-const sqs = new SQSClient({});
-
-export async function queueEmail(to: string, template: string, data: Record<string, unknown>) {
-  await sqs.send(new SendMessageCommand({
-    QueueUrl: process.env.EMAIL_QUEUE_URL,
-    MessageBody: JSON.stringify({ to, template, data }),
-  }));
-}
-
-export async function queuePush(
-  userId: string,
-  title: string,
-  body: string,
-  data?: Record<string, unknown>,  // Deep linking payload
-) {
-  await sqs.send(new SendMessageCommand({
-    QueueUrl: process.env.PUSH_QUEUE_URL,
-    MessageBody: JSON.stringify({ userId, title, body, data }),
-  }));
-}
-```
+> See [IMPLEMENTATION_PATTERNS.md § 9](./IMPLEMENTATION_PATTERNS.md#9-background-jobs--sqs-queue-helpers) for the queue helper code.
 
 ### EventBridge Scheduler (Cron Jobs)
 
@@ -834,39 +609,9 @@ export async function queuePush(
 
 Domain-specific scheduled jobs (e.g., expiration checks, reminders) are added as separate Lambda functions with the same pattern — EventBridge triggers, SQS for side-effects, SNS for realtime.
 
-```typescript
-// apps/workers/src/cron/example.ts (pattern for any scheduled job)
-import { db, someTable, users, eq, lte, and } from '@izimate/db';
-import { queueEmail, queuePush } from '@izimate/db/queue';
-import { publishEvent } from '@izimate/db/events';
-import type { ScheduledHandler } from 'aws-lambda';
+The standard cron pattern is: query DB for time-based conditions → update state → queue email/push → publish realtime event.
 
-export const handler: ScheduledHandler = async () => {
-  // 1. Query for records matching time-based conditions
-  const expired = await db
-    .select()
-    .from(someTable)
-    .where(and(eq(someTable.status, 'active'), lte(someTable.expiresAt, new Date())));
-
-  for (const record of expired) {
-    // 2. Update DB state
-    await db.update(someTable).set({ status: 'closed' }).where(eq(someTable.id, record.id));
-
-    // 3. Notify affected user
-    const [owner] = await db.select().from(users).where(eq(users.id, record.ownerId));
-    await queueEmail(owner.email, 'status-changed', { record });
-    await queuePush(record.ownerId, 'Status Update', 'Your item status has changed');
-
-    // 4. Push realtime event to connected clients
-    await publishEvent({
-      type: 'record:updated',
-      namespace: '/notifications',
-      room: record.ownerId,
-      data: { recordId: record.id },
-    });
-  }
-};
-```
+> See [IMPLEMENTATION_PATTERNS.md § 10](./IMPLEMENTATION_PATTERNS.md#10-background-jobs--cron-job-pattern) for the cron job code pattern.
 
 **Why not BullMQ / node-cron on Fargate?** Separating scheduled work into Lambda + EventBridge means:
 - Fargate stays lean (only WebSockets) — no cron library, no job queue overhead
@@ -914,203 +659,31 @@ sequenceDiagram
     W->>DB: Remove invalid tokens (DeviceNotRegistered)
 ```
 
-### Client-Side Setup
+### Client-Side Registration
 
-```typescript
-// apps/mobile/src/lib/notifications.ts
-import * as Notifications from 'expo-notifications';
-import * as Device from 'expo-device';
-import { Platform } from 'react-native';
-import Constants from 'expo-constants';
-import { usersApi } from '@izimate/api-client';
+The mobile app requests push permissions via `expo-notifications`, obtains an Expo Push Token, and sends it to the API for storage. Tokens are stored per-device (a user can have multiple tokens). The API upserts tokens to prevent duplicates.
 
-// Configure how notifications appear when app is in foreground
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-  }),
-});
+### Token & Receipt Storage
 
-export async function registerForPushNotifications() {
-  if (!Device.isDevice) return null; // Push doesn't work on simulators
+Two tables support the push notification lifecycle:
+- **`push_tokens`** — one row per device token, linked to user via foreign key. `ON DELETE CASCADE` cleans up when user is deleted.
+- **`push_receipts`** — tracks Expo ticket IDs for async receipt verification. Marked as processed after the cron job checks delivery status.
 
-  const { status: existing } = await Notifications.getPermissionsAsync();
-  let finalStatus = existing;
+### Worker Flow (SQS Consumer)
 
-  if (existing !== 'granted') {
-    const { status } = await Notifications.requestPermissionsAsync();
-    finalStatus = status;
-  }
-  if (finalStatus !== 'granted') return null;
-
-  const { data: token } = await Notifications.getExpoPushTokenAsync({
-    projectId: Constants.expoConfig?.extra?.eas?.projectId,
-  });
-
-  // Send token to our API — upsert in DB
-  await usersApi.registerPushToken(token, Platform.OS as 'ios' | 'android');
-
-  return token;
-}
-```
-
-### Token Storage (Drizzle Schema)
-
-```typescript
-// packages/db/src/schema/push-tokens.ts
-import { pgTable, uuid, text, timestamp } from 'drizzle-orm/pg-core';
-import { users } from './users';
-
-export const pushTokens = pgTable('push_tokens', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  token: text('token').notNull().unique(),  // ExponentPushToken[xxx]
-  platform: text('platform').notNull(),     // 'ios' | 'android'
-  createdAt: timestamp('created_at').defaultNow(),
-  updatedAt: timestamp('updated_at').defaultNow(),
-});
-```
-
-A user can have **multiple tokens** (multiple devices). The `unique` constraint on `token` prevents duplicates. `ON DELETE CASCADE` cleans up tokens when user is deleted.
-
-Ticket tracking for receipt checking:
-
-```typescript
-// packages/db/src/schema/push-receipts.ts
-import { pgTable, uuid, text, boolean, timestamp } from 'drizzle-orm/pg-core';
-
-export const pushReceipts = pgTable('push_receipts', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  ticketId: text('ticket_id').notNull().unique(),
-  token: text('token').notNull(),           // Expo push token (for cleanup on failure)
-  processed: boolean('processed').default(false),
-  createdAt: timestamp('created_at').defaultNow(),
-});
-```
-
-### API Endpoint
-
-```typescript
-// apps/api/src/routes/users.ts (inside usersRoutes)
-// Note: authPlugin decorates req with req.userId from the verified JWT
-app.post('/push-token', {
-  schema: {
-    body: z.object({
-      token: z.string().startsWith('ExponentPushToken['),
-      platform: z.enum(['ios', 'android']),
-    }),
-  },
-  handler: async (req) => {
-    await db
-      .insert(pushTokens)
-      .values({ userId: req.userId, token: req.body.token, platform: req.body.platform })
-      .onConflictDoUpdate({ target: pushTokens.token, set: { updatedAt: new Date() } });
-    return { ok: true };
-  },
-});
-```
-
-### Worker Implementation (SQS Consumer)
-
-```typescript
-// apps/workers/src/push.ts
-import { Expo, type ExpoPushMessage } from 'expo-server-sdk';
-import { db, pushTokens, pushReceipts, eq } from '@izimate/db';
-import type { SQSHandler } from 'aws-lambda';
-
-const expo = new Expo();
-
-export const handler: SQSHandler = async (event) => {
-  for (const record of event.Records) {
-    const { userId, title, body, data } = JSON.parse(record.body);
-
-    // 1. Look up all push tokens for this user
-    const tokens = await db
-      .select()
-      .from(pushTokens)
-      .where(eq(pushTokens.userId, userId));
-
-    if (tokens.length === 0) continue;
-
-    // 2. Build messages (one per device token)
-    const messages: ExpoPushMessage[] = tokens
-      .filter((t) => Expo.isExpoPushToken(t.token))
-      .map((t) => ({
-        to: t.token,
-        sound: 'default',
-        title,
-        body,
-        data, // Custom payload — used for deep linking on tap
-      }));
-
-    if (messages.length === 0) continue;
-
-    // 3. Send in chunks (Expo recommends batches of ~100)
-    const chunks = expo.chunkPushNotifications(messages);
-
-    for (const chunk of chunks) {
-      const tickets = await expo.sendPushNotificationsAsync(chunk);
-
-      // 4. Store ticket IDs for receipt checking (cron job checks ~15min later)
-      for (let i = 0; i < tickets.length; i++) {
-        const ticket = tickets[i];
-        if (ticket.status === 'ok') {
-          await db.insert(pushReceipts).values({ ticketId: ticket.id, token: chunk[i].to as string });
-        } else if (ticket.status === 'error' && ticket.details?.error === 'DeviceNotRegistered') {
-          // Token is invalid — remove from DB immediately
-          await db.delete(pushTokens).where(eq(pushTokens.token, chunk[i].to as string));
-        }
-      }
-    }
-  }
-};
-```
+The push worker receives messages from SQS, looks up all push tokens for the target user, batches them via the Expo SDK (~100 per request), and sends to the Expo Push API. Invalid tokens (`DeviceNotRegistered`) are purged from DB immediately. Successful sends store ticket IDs for receipt checking.
 
 ### Receipt Checking (Cron)
 
-Expo recommends checking push receipts ~15 minutes after sending. A cron job handles this:
+A cron job (EventBridge, every 15 minutes) queries the Expo receipts API for unprocessed tickets. Tokens that have become invalid (user uninstalled, token expired) are purged from the `push_tokens` table.
 
-```typescript
-// apps/workers/src/cron/push-receipts.ts (EventBridge: rate(15 minutes))
-import { Expo } from 'expo-server-sdk';
-import { db, pushTokens, pushReceipts, eq } from '@izimate/db';
-
-const expo = new Expo();
-
-export const handler = async () => {
-  // Pull unprocessed ticket IDs stored when the push worker sent notifications
-  const pending = await db
-    .select()
-    .from(pushReceipts)
-    .where(eq(pushReceipts.processed, false));
-
-  const ticketIds = pending.map((r) => r.ticketId);
-  if (ticketIds.length === 0) return;
-
-  const chunks = expo.chunkPushNotificationReceiptIds(ticketIds);
-
-  for (const chunk of chunks) {
-    const receipts = await expo.getPushNotificationReceiptsAsync(chunk);
-
-    for (const [ticketId, receipt] of Object.entries(receipts)) {
-      if (receipt.status === 'error' && receipt.details?.error === 'DeviceNotRegistered') {
-        // Token expired or user uninstalled — purge from DB
-        const row = pending.find((r) => r.ticketId === ticketId);
-        if (row) await db.delete(pushTokens).where(eq(pushTokens.token, row.token));
-      }
-      await db.update(pushReceipts).set({ processed: true }).where(eq(pushReceipts.ticketId, ticketId));
-    }
-  }
-};
-```
+> See [IMPLEMENTATION_PATTERNS.md § 11–15](./IMPLEMENTATION_PATTERNS.md#11-push-notifications--client-registration) for all push notification code patterns.
 
 ### Notification Triggers
 
 Push notifications are triggered by application events (status changes, new messages, payment confirmations, reminders, etc.). The specific triggers are defined by business logic — this system provides the infrastructure to send them via `queuePush()` → SQS → Lambda worker → Expo Push API.
 
-**Key rule:** If the user is **online** (connected to Socket.io `/notifications` namespace), we send an in-app realtime notification only — no push. Push is only for **offline** users. The push worker checks presence via a simple DB flag or Redis key set by the realtime server on connect/disconnect.
+**Key rule:** If the user is **online** (connected to Socket.io `/notifications` namespace), we send an in-app realtime notification only — no push. Push is only for **offline** users. The push worker checks presence via a Neon `is_online` flag on the users table, set by the Fargate realtime server on connect/disconnect. Neon is used instead of Redis because Lambda workers run outside the VPC and cannot reach ElastiCache.
 
 ### Expo Push API Details
 
@@ -1172,23 +745,9 @@ Cloudflare Image Transformations (available with R2):
 
 ### Phase 1: Postgres Full-Text Search
 
-Good enough for an application with <100k searchable records:
+Good enough for an application with <100k searchable records. Uses Postgres `tsvector` / `tsquery` via Drizzle for ranked full-text search with no additional infrastructure.
 
-```typescript
-// Drizzle query with Postgres tsvector
-import { sql } from 'drizzle-orm';
-import { db, items } from '@izimate/db';
-
-const tsVector = sql`to_tsvector('english', ${items.title} || ' ' || ${items.description})`;
-const tsQuery = sql`plainto_tsquery('english', ${searchQuery})`;
-
-const results = await db
-  .select()
-  .from(items)
-  .where(sql`${tsVector} @@ ${tsQuery}`)
-  .orderBy(sql`ts_rank(${tsVector}, ${tsQuery}) DESC`)
-  .limit(20);
-```
+> See [IMPLEMENTATION_PATTERNS.md § 16](./IMPLEMENTATION_PATTERNS.md#16-search--postgres-full-text-search) for the Drizzle query pattern.
 
 ### Phase 2 (If Needed): Typesense / Meilisearch
 
@@ -1295,3 +854,230 @@ graph BT
 | **Lambda — Cron** | EventBridge-triggered scheduled tasks: expiration, reminders, cleanup | Serve HTTP, hold connections |
 | **Fargate (Socket.io)** | WebSocket connections, chat rooms, presence, realtime notifications | REST API, cron jobs, email, push |
 | **ElastiCache Redis** | Socket.io pub/sub adapter across Fargate instances | Application caching, session storage, rate limiting |
+
+---
+
+## 20. Security Foundations
+
+Every feature built on this platform inherits these security patterns. They must be decided at the infrastructure level — not per-feature.
+
+### Authentication
+
+Auth0 handles identity (social login, email/password, MFA). All server-side services verify JWTs via a shared `verifyToken()` function using JWKS. Token storage differs by platform:
+- **Mobile**: `expo-secure-store` (native keychain)
+- **Web**: Encrypted HTTP-only session cookie (set by Auth0 SDK route handler)
+
+### Authorization
+
+**Ownership-based access control** as the default pattern. Every resource has an `ownerId` (or equivalent FK to `users.id`). The standard authorization check in every route handler:
+
+1. Extract `userId` from verified JWT (done by `authPlugin`)
+2. Query the resource
+3. Verify `resource.ownerId === req.userId` (or the user is a participant in the resource)
+4. Return `403 Forbidden` if not
+
+For resources with **multiple participants** (e.g., a booking with a provider and a customer), both participant IDs are checked. There are no admin roles or RBAC in the MVP — this is a peer-to-peer services exchange platform.
+
+**Route-level guards:** Authorization logic lives in route handlers or thin service functions — not in middleware. Each feature defines its own access rules because resource relationships vary.
+
+### Rate Limiting
+
+| Layer | Strategy | Config |
+|-------|----------|--------|
+| **API Gateway** | Global throttle | 1,000 req/sec burst, 500 sustained |
+| **Fastify (`@fastify/rate-limit`)** | Per-IP + per-user | Configurable per-route (e.g., auth endpoints stricter) |
+| **Socket.io** | Per-connection event throttle | Custom middleware on each namespace |
+
+Rate limit responses return `429 Too Many Requests` with a `Retry-After` header.
+
+### Secret Management
+
+| Secret | Storage | Accessed By |
+|--------|---------|-------------|
+| `AUTH0_DOMAIN`, `AUTH0_AUDIENCE` | Lambda environment variables (encrypted at rest) | API Lambda, Workers, Fargate |
+| `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | AWS SSM Parameter Store (SecureString) | API Lambda (fetched at cold start, cached) |
+| `DATABASE_URL` | Lambda environment variable | All server-side compute |
+| `REDIS_URL` | Fargate environment variable | Fargate only |
+| Resend API key | Lambda environment variable | Email worker |
+
+Non-sensitive config (feature flags, thresholds) uses plain environment variables. Secrets that rotate (Stripe keys) use SSM Parameter Store so rotation doesn't require redeployment.
+
+### Input Validation & Sanitization
+
+- **Zod schemas** validate all request inputs (body, query, params) before handlers execute — rejects malformed data at the framework level
+- **Drizzle ORM** parameterizes all queries — prevents SQL injection by design
+- **No raw HTML rendering** — React (mobile + web) escapes by default; no `dangerouslySetInnerHTML` without explicit sanitization
+
+### Transport Security
+
+- All client-to-server communication over HTTPS / WSS (TLS termination at API Gateway and ALB)
+- Neon connections use TLS by default
+- No unencrypted internal traffic — ElastiCache Redis uses in-transit encryption
+
+---
+
+## 21. Error Handling & Resilience
+
+### Standard API Error Response
+
+All API routes return errors in a consistent shape:
+
+```json
+{
+  "error": {
+    "code": "RESOURCE_NOT_FOUND",
+    "message": "The requested resource does not exist",
+    "statusCode": 404
+  }
+}
+```
+
+| HTTP Status | Usage |
+|-------------|-------|
+| `400` | Zod validation failure (automatic), malformed request |
+| `401` | Missing or invalid JWT |
+| `403` | Authenticated but not authorized (ownership check failed) |
+| `404` | Resource not found |
+| `409` | Conflict (e.g., duplicate resource) |
+| `429` | Rate limit exceeded |
+| `500` | Unhandled server error (logged to Sentry, generic message returned) |
+
+A Fastify `setErrorHandler` plugin formats all errors into this shape, including Zod validation errors (mapped to 400 with field-level details).
+
+### SQS Failure & Dead-Letter Queues
+
+| Step | Behavior |
+|------|----------|
+| Worker fails to process message | SQS retries up to **3 times** with exponential backoff |
+| All retries exhausted | Message moves to the DLQ |
+| DLQ alarm | CloudWatch alarm triggers on `ApproximateNumberOfMessagesVisible > 0` |
+| Resolution | Manual inspection via AWS Console or CLI; replay by moving messages back to the source queue |
+
+DLQ messages are retained for **14 days** (max SQS retention) to allow investigation.
+
+### SNS → Fargate Failure Mode
+
+SNS HTTPS subscriptions retry 3 times over ~20 seconds. If Fargate is unreachable:
+- Events are **lost** — SNS does not have durable retry for HTTPS endpoints
+- **Mitigation:** This is acceptable for realtime events (they're transient by nature — if a user isn't connected, they don't need the event). The persistent state change already happened in the DB. Users reconnecting get fresh state from the API.
+- **Future hardening (if needed):** Add an SQS subscription to the same SNS topic as a durable buffer, with a Lambda that replays missed events when Fargate recovers.
+
+### External Service Degradation
+
+| Service | Failure Impact | Mitigation |
+|---------|---------------|------------|
+| **Neon** | API returns 500s | Sentry alert; Neon has 99.95% SLA on Pro. No local fallback — DB is critical path. |
+| **Auth0** | Login fails; JWT verification fails | JWKS is cached in memory after first fetch (jose default). Existing sessions continue working until tokens expire. |
+| **Stripe** | Payments fail | Webhook retries (Stripe retries for up to 3 days). Users see a clear error; no silent failures. |
+| **Resend** | Emails not delivered | SQS retries + DLQ. Non-blocking — doesn't affect user-facing flows. |
+| **Expo Push** | Push notifications not delivered | SQS retries + DLQ. Non-blocking; receipt cron cleans up stale tokens. |
+
+### Timeouts
+
+| Compute | Timeout | Rationale |
+|---------|---------|-----------|
+| Lambda — API | 30s | Generous for DB queries + external calls |
+| Lambda — Workers | 60s | Email/push batching may take longer |
+| Lambda — Cron | 300s (5 min) | Batch processing over many records |
+| Fargate | No timeout | Long-lived WebSocket connections |
+| API Gateway | 30s | Matches Lambda API timeout |
+
+---
+
+## 22. Observability Patterns
+
+### Structured Logging
+
+All server-side services (Lambda, Fargate, workers) use structured JSON logs with a consistent shape:
+
+```json
+{
+  "level": "info",
+  "timestamp": "2026-03-09T12:00:00.000Z",
+  "correlationId": "req-abc123",
+  "service": "api",
+  "message": "Resource created",
+  "userId": "user-xyz",
+  "duration": 45
+}
+```
+
+Use Fastify's built-in `pino` logger (already included) — it outputs structured JSON by default.
+
+### Correlation IDs
+
+A `correlationId` is generated at the entry point (API Gateway request or SQS message) and propagated through the entire chain:
+
+| Hop | How it's propagated |
+|-----|-------------------|
+| Client → API | `X-Correlation-ID` header (generated if absent) |
+| API → SQS | Included as `MessageAttribute` |
+| SQS → Worker | Extracted from `MessageAttribute` |
+| API → SNS | Included as `MessageAttribute` |
+| SNS → Fargate | Extracted from SNS message attributes |
+
+This allows tracing a single user action (e.g., "create booking") end-to-end across API → SQS → email worker → SNS → Fargate → client.
+
+### Alerting
+
+| Condition | Alert Channel | Severity |
+|-----------|--------------|----------|
+| Sentry error spike (>10 events/min) | Sentry → Slack webhook | High |
+| SQS DLQ has messages (`ApproximateNumberOfMessagesVisible > 0`) | CloudWatch alarm → SNS → email/Slack | High |
+| Lambda error rate > 5% | CloudWatch alarm | Medium |
+| Lambda P99 latency > 5s | CloudWatch alarm | Medium |
+| Fargate task unhealthy / restarting | ECS event → CloudWatch alarm | High |
+| Neon connection failures | Sentry (caught in Drizzle error handler) | High |
+
+**No PagerDuty / on-call at MVP** — alerts go to a Slack channel. Escalate to on-call tooling when the platform has paying users.
+
+---
+
+## 23. Adding a Feature
+
+This section defines the architectural contract for building new features on the iZimate foundation. Every feature follows the same steps — this consistency is the value of the foundation.
+
+### Step-by-Step
+
+**1. Define schemas** in `@izimate/shared`
+- Zod schemas for request/response validation
+- TypeScript types inferred from schemas (no manual type definitions)
+- Shared between client and server
+
+**2. Add database table(s)** in `@izimate/db`
+- Drizzle table definition in `packages/db/src/schema/`
+- Run `drizzle-kit generate` → `drizzle-kit push` (dev) or `drizzle-kit migrate` (prod)
+- Export from `packages/db/src/index.ts`
+
+**3. Add API route module** in `apps/api`
+- Create `apps/api/src/routes/{feature}.ts` as a `FastifyPluginAsyncZod`
+- Register with prefix in the auth-scoped block in `index.ts`
+- Use Zod schemas from step 1 for request/response validation
+- Authorization: check resource ownership in handlers
+
+**4. Add typed client functions** in `@izimate/api-client`
+- Create `packages/api-client/src/http/{feature}.ts`
+- Typed fetch wrappers using the same Zod schemas
+- Consumed by both mobile and web via React Query
+
+**5. (If realtime needed)** Add Socket.io namespace/events in `apps/realtime`
+- Define events in a new namespace or add to existing (`/chat`, `/notifications`)
+- Publish from API/workers via `publishEvent()` → SNS → Fargate
+
+**6. (If async side-effects needed)** Use existing queue infrastructure
+- Call `queueEmail()` / `queuePush()` from route handlers or workers
+- No new infrastructure — reuses existing SQS queues and Lambda workers
+
+**7. (If scheduled work needed)** Add EventBridge cron Lambda
+- New Lambda function in `apps/workers/src/cron/`
+- EventBridge schedule defined in `infra/eventbridge.ts`
+
+### What Each Feature Does NOT Do
+
+- Define its own auth middleware (use `authPlugin`)
+- Create its own API server or deployment (register as Fastify plugin)
+- Define its own error format (use the standard error handler)
+- Import `@izimate/db` from client code (go through `api-client`)
+- Add API routes to Next.js (all data flows through Lambda)
+
+> See [IMPLEMENTATION_PATTERNS.md](./IMPLEMENTATION_PATTERNS.md) for concrete code examples of each step.
