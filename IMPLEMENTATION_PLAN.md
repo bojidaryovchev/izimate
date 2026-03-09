@@ -1,1043 +1,392 @@
 # iZimate v2 — Implementation Plan
 
-> Derived from [SYSTEM_DESIGN.md](SYSTEM_DESIGN.md). Each phase lists its **prerequisites**, **deliverables**, and **exit criteria** so work can be parallelized where dependencies allow.
+> **Companion to [SYSTEM_DESIGN.md](./SYSTEM_DESIGN.md) and [IMPLEMENTATION_PATTERNS.md](./IMPLEMENTATION_PATTERNS.md)**
+>
+> This plan sequences every piece of the v2 architecture into buildable, verifiable phases. Each task has a clear deliverable and acceptance criteria. Phases are sequential — each builds on the previous — but tasks within a phase can often be parallelized.
 
 ---
 
-## Phase Dependency Map
+## Guiding Principles
+
+1. **Foundation before features.** Every phase builds infrastructure that all future features inherit.
+2. **Verify each layer before moving up.** Each phase ends with a smoke test or integration check.
+3. **One vertical slice early.** Phase 5 delivers a "Users" feature end-to-end (DB → API → client → mobile/web) to validate the entire stack before building more features.
+4. **No premature optimization.** Start with single instances, free tiers, and simple configs. Harden later.
+
+---
+
+## Phase Overview
+
+| Phase | Name | Goal | Depends On |
+|-------|------|------|------------|
+| **0** | Monorepo Scaffold | Workspace structure, tooling, package skeletons | — |
+| **1** | Infrastructure (IaC) | All AWS + third-party resources provisioned | Phase 0 |
+| **2** | Database Foundation | Neon connected, Drizzle configured, users table, migrations working | Phase 1 |
+| **3** | Auth | Auth0 tenant, JWT verification, auth middleware | Phase 2 |
+| **4** | API Server Core | Fastify on Lambda serving authenticated routes | Phase 3 |
+| **5** | First Vertical Slice — Users | End-to-end: DB → API → api-client → mobile + web | Phase 4 |
+| **6** | Realtime Server | Fargate + Socket.io + Redis adapter + SNS subscription | Phase 4 |
+| **7** | Background Workers | SQS consumers (email + push), EventBridge cron, DLQs | Phase 4 |
+| **8** | Push Notifications | Full push lifecycle: registration → delivery → receipt checking | Phase 6, 7 |
+| **9** | Email, Image Upload, Payments, Search | Remaining infrastructure features | Phase 7 |
+| **10** | CI/CD Pipeline | Automated lint, test, build, deploy across all apps | Phase 5+ |
+| **11** | Observability & Hardening | Sentry, structured logging, correlation IDs, alerts | Phase 5+ |
+
+**Estimated total:** ~12–16 weeks for a solo developer, ~6–8 weeks for two.
+
+---
+
+## Phase 0 — Monorepo Scaffold
+
+**Goal:** Working pnpm workspace with all package skeletons, shared tooling, and TypeScript compilation.
+
+| # | Task | Deliverable | Acceptance Criteria |
+|---|------|------------|---------------------|
+| 0.1 | Initialize monorepo | `pnpm-workspace.yaml` with `apps/*` and `packages/*` globs | `pnpm install` succeeds from root |
+| 0.2 | Root tsconfig | `tsconfig.json` with project references | Base config extends to all packages |
+| 0.3 | ESLint + Prettier | Root config, shared rules | `pnpm lint` runs across all packages |
+| 0.4 | Create `@izimate/shared` skeleton | `packages/shared/` with `src/`, `package.json`, `tsconfig.json` | Builds, exports from `src/index.ts` |
+| 0.5 | Create `@izimate/db` skeleton | `packages/db/` with `src/`, Drizzle config, `package.json` | Builds, `drizzle-kit` CLI available |
+| 0.6 | Create `@izimate/api-client` skeleton | `packages/api-client/` with `src/http/`, `src/socket/`, `package.json` | Builds, exports from `src/index.ts` |
+| 0.7 | Create `apps/api` skeleton | `apps/api/` with Fastify + `@fastify/aws-lambda` | `pnpm dev` starts local Fastify server |
+| 0.8 | Create `apps/realtime` skeleton | `apps/realtime/` with Fastify + Socket.io, `Dockerfile` | `pnpm dev` starts local server, `docker build` succeeds |
+| 0.9 | Create `apps/workers` skeleton | `apps/workers/` with Lambda handler stubs | Builds, exports handler functions |
+| 0.10 | Create `apps/mobile` skeleton | `apps/mobile/` with Expo SDK 54, Expo Router v6 | `npx expo start` launches dev server |
+| 0.11 | Create `apps/web` skeleton | `apps/web/` with Next.js 16, App Router | `pnpm dev` starts on localhost:3000 |
+| 0.12 | Create `infra/` skeleton | `infra/` with Pulumi project, empty resource files | `pulumi preview` runs without error |
+| 0.13 | Verify cross-package imports | `apps/api` imports from `@izimate/shared` and `@izimate/db` | TypeScript compiles, runtime imports work |
+
+**Verification:** Run `pnpm -r build` from root — all packages and apps compile without errors.
+
+---
+
+## Phase 1 — Infrastructure (Pulumi IaC)
+
+**Goal:** All AWS resources provisioned and reachable. Third-party services (Auth0, Neon, R2, Resend, Stripe) have accounts and API keys.
+
+### 1a. Third-Party Accounts
+
+| # | Task | Deliverable | Acceptance Criteria |
+|---|------|------------|---------------------|
+| 1.1 | Create Neon project | Neon project with `main` branch, connection string | Can connect via `@neondatabase/serverless` from a local script |
+| 1.2 | Create Auth0 tenant | Tenant, API audience, SPA + native application configs | Auth0 dashboard shows apps, login page loads |
+| 1.3 | Create Cloudflare R2 bucket | R2 bucket with public access for CDN | Can upload + read a test file via S3 SDK |
+| 1.4 | Create Resend account | API key, verified sending domain | Test email sends successfully |
+| 1.5 | Create Stripe account | Secret key, webhook signing secret | Test mode dashboard accessible |
+| 1.6 | Create Sentry projects | Sentry projects for mobile, web, api, realtime, workers | DSNs available for each project |
+
+### 1b. AWS Infrastructure (Pulumi)
+
+| # | Task | Deliverable | Acceptance Criteria |
+|---|------|------------|---------------------|
+| 1.7 | S3 backend for Pulumi state | S3 bucket + DynamoDB lock table | `pulumi login s3://...` succeeds |
+| 1.8 | VPC + subnets | VPC `10.0.0.0/16`, 2 public subnets, 1 private subnet | `pulumi up` creates resources, subnets visible in console |
+| 1.9 | ElastiCache Redis | `t4g.micro` in private subnet, security group | Can connect from within VPC (test from Fargate later) |
+| 1.10 | API Gateway HTTP API | HTTP API with `$default` stage, custom domain `api.izimate.com` | HTTPS request to `api.izimate.com` returns 404 (no Lambda yet) |
+| 1.11 | Lambda — API function | Node.js 22, arm64, 512 MB, 30s timeout, API Gateway integration | Deploys hello-world handler, API Gateway routes to it |
+| 1.12 | Lambda — Worker functions | Email + push workers, 60s timeout | Deploy stubs, SQS triggers configured |
+| 1.13 | Lambda — Cron functions | Push-receipts (15 min) + cleanup (daily) | EventBridge schedules visible, Lambda stubs deploy |
+| 1.14 | SQS queues | `email` + `push` queues, each with a DLQ (3 retries, 14-day retention) | Queues visible in console, test message round-trips |
+| 1.15 | SNS Events Topic | Topic with HTTPS subscription to ALB | Topic created, subscription pending (confirmed after Fargate deploys) |
+| 1.16 | ALB | HTTPS listener, target group for Fargate, sticky sessions, 3600s idle timeout | ALB healthy, domain `realtime.izimate.com` resolves |
+| 1.17 | ECS Fargate service | Task definition (0.5 vCPU, 1 GB), ECR repo, desired count = 1 | Fargate task runs, ALB health check passes |
+| 1.18 | ACM certificates | Certs for `api.izimate.com` and `realtime.izimate.com` | Certificates validated and attached to API Gateway + ALB |
+| 1.19 | DNS records | Route53 or Cloudflare: `api.`, `realtime.`, `www.` + apex | All subdomains resolve to correct targets |
+| 1.20 | SSM parameters | Stripe keys stored as SecureString | `aws ssm get-parameter` returns encrypted values |
+| 1.21 | CloudWatch DLQ alarms | Alarm on each DLQ (`ApproximateNumberOfMessagesVisible > 0`) | Test message to DLQ triggers alarm |
+
+**Verification:** `pulumi up` provisions everything. Lambda returns "hello" at `api.izimate.com/health`. Fargate returns "ok" at `realtime.izimate.com/health`. SNS subscription confirmed.
+
+---
+
+## Phase 2 — Database Foundation
+
+**Goal:** Neon connected from Lambda and Fargate. Drizzle schema for `users` table. Migration workflow working.
+
+| # | Task | Deliverable | Acceptance Criteria |
+|---|------|------------|---------------------|
+| 2.1 | Configure Drizzle in `@izimate/db` | `drizzle.config.ts` with Neon HTTP driver | `drizzle-kit push` connects to Neon |
+| 2.2 | Define `users` table schema | `packages/db/src/schema/users.ts` — id, auth0Id, email, name, avatarUrl, isOnline, timestamps | Schema file compiles, types exported |
+| 2.3 | Generate + apply first migration | `drizzle/` migration files | `drizzle-kit generate` creates SQL, `drizzle-kit push` applies to Neon |
+| 2.4 | Export DB client + schema | `packages/db/src/index.ts` exports `db`, `users`, types | `apps/api` can import and query |
+| 2.5 | Neon branching setup | Branch per environment (dev, staging) | `drizzle-kit push` works against a Neon branch |
+| 2.6 | Verify from Lambda | Deploy API Lambda that queries `SELECT 1` via Drizzle | `api.izimate.com/health` returns `{ "db": "ok" }` |
+| 2.7 | Verify from Fargate | Fargate health check queries Neon | `realtime.izimate.com/health` returns `{ "db": "ok" }` |
+
+**Verification:** Both Lambda and Fargate can read/write to Neon. Migration workflow creates + applies schema changes.
+
+---
+
+## Phase 3 — Auth
+
+**Goal:** Auth0 login working on mobile + web. JWT verification on all server-side services. `authPlugin` protecting API routes.
+
+| # | Task | Deliverable | Acceptance Criteria |
+|---|------|------------|---------------------|
+| 3.1 | Implement `verifyToken()` | `packages/db/src/auth.ts` — jose JWKS verification | Unit test: valid Auth0 JWT returns payload; invalid JWT throws |
+| 3.2 | Implement Fastify `authPlugin` | `apps/api/src/middleware/auth.ts` — decorates `req.userId` | Protected route returns 401 without token, 200 with valid token |
+| 3.3 | Auth0 — configure social providers | Google, Apple Sign-In enabled in Auth0 dashboard | Social login flows work in Auth0 Universal Login |
+| 3.4 | Mobile — Auth0 login flow | `expo-auth-session` + `expo-secure-store` | User can sign in, JWT stored in secure store, displayed in debug screen |
+| 3.5 | Mobile — token attachment | `Authorization: Bearer` header on all API calls | API receives valid JWT from mobile app |
+| 3.6 | Web — Auth0 SDK setup | Next.js Auth0 SDK, `/api/auth/*` route handlers | User can sign in via browser, session cookie set |
+| 3.7 | Web — token forwarding | Extract token from session, add to `api-client` calls | API receives valid JWT from web app |
+| 3.8 | Socket.io auth middleware | JWT verification in `connection` handler | Socket connects with valid token, rejects without |
+| 3.9 | User upsert on first login | API route: on first authenticated request, create user in DB if not exists | New Auth0 user gets a `users` row; returning user gets existing row |
+
+**Verification:** Mobile app and web app can sign in → JWT is verified by API → user exists in DB. Socket.io connection authenticated.
+
+---
+
+## Phase 4 — API Server Core
+
+**Goal:** Fastify on Lambda with all middleware, error handling, and the standard route pattern established.
+
+| # | Task | Deliverable | Acceptance Criteria |
+|---|------|------------|---------------------|
+| 4.1 | Fastify bootstrap with Zod type provider | `apps/api/src/index.ts` — full setup per IMPLEMENTATION_PATTERNS.md § 2 | Local dev server starts, Lambda handler exported |
+| 4.2 | CORS plugin | `@fastify/cors` configured for `izimate.com` + `localhost:*` | Preflight requests pass from allowed origins, rejected from others |
+| 4.3 | Rate limiting plugin | `@fastify/rate-limit` — global defaults + per-route overrides | 429 returned after exceeding limit; `Retry-After` header present |
+| 4.4 | Standard error handler | `setErrorHandler` plugin, consistent JSON error shape (Section 21) | Zod validation fails → 400 with field details; 404 returns standard shape; unknown error → 500 with generic message |
+| 4.5 | Health check endpoint | `GET /health` returns DB status | Returns `{ "status": "ok", "db": "connected" }` |
+| 4.6 | Webhook route skeleton | `POST /webhooks/stripe` with Stripe signature verification | Valid Stripe test webhook → 200; tampered signature → 400 |
+| 4.7 | Lambda deploy + test | Deploy bundled app via Pulumi/GitHub Actions | `api.izimate.com/health` returns 200 |
+| 4.8 | Define `AppEvent` type | `@izimate/shared` — `{ type, namespace, room, data }` | Shared type used by `publishEvent()` and Fargate internal endpoint |
+| 4.9 | Implement `publishEvent()` | `packages/db/src/events.ts` — SNS PublishCommand wrapper | Unit test: publishes typed event to SNS topic |
+| 4.10 | Implement `queueEmail()` + `queuePush()` | `packages/db/src/queue.ts` — SQS SendMessage wrappers | Unit test: sends typed messages to correct SQS queues |
+
+**Verification:** API serves routes on Lambda behind API Gateway. Auth middleware protects routes. Error handler returns consistent shapes. SNS + SQS helpers work.
+
+---
+
+## Phase 5 — First Vertical Slice (Users)
+
+**Goal:** Prove the entire stack end-to-end by building the first feature — user profiles — from DB to client.
+
+This is the most important phase. It validates every architectural decision in the system design before building more features.
+
+| # | Task | Deliverable | Acceptance Criteria |
+|---|------|------------|---------------------|
+| 5.1 | Zod schemas for user profile | `@izimate/shared` — `UserSchema`, `UpdateUserSchema` | Schemas compile, used by both API and client |
+| 5.2 | User API routes | `apps/api/src/routes/users.ts` — `GET /api/users/me`, `PATCH /api/users/me` | Authenticated request returns user profile; update changes name/avatar |
+| 5.3 | Typed client functions | `packages/api-client/src/http/users.ts` — `usersApi.getMe()`, `usersApi.update()` | Functions return typed `User` objects |
+| 5.4 | Mobile — profile screen | `apps/mobile/src/app/(tabs)/profile.tsx` — fetch + display user data | Screen shows user name, email, avatar from API |
+| 5.5 | Mobile — edit profile | Edit form that calls `usersApi.update()` | User can change name, changes persist across app restart |
+| 5.6 | Web — profile page | `apps/web/app/profile/page.tsx` — fetch + display user data | Page renders user profile from API |
+| 5.7 | React Query setup | `QueryClient` configured in both mobile + web, `useQuery` for user data | Data cached, refetches on focus, loading/error states work |
+| 5.8 | Zustand user store | `apps/mobile/src/stores/user.ts` — auth state, current user | Auth token + user data persisted and accessible globally |
+| 5.9 | End-to-end test | Sign in → view profile → edit → verify change in DB | Full round-trip works on both mobile (Maestro) and web (Playwright) |
+
+**Verification:** A user can sign in on mobile or web, see their profile, edit it, and see the change reflected. The type chain works end-to-end: Zod schema → API validation → api-client return type → React component props. **If this phase works, every future feature follows the same pattern.**
+
+---
+
+## Phase 6 — Realtime Server
+
+**Goal:** Fargate running Socket.io with Redis adapter, SNS subscription, namespaces, and presence.
+
+| # | Task | Deliverable | Acceptance Criteria |
+|---|------|------------|---------------------|
+| 6.1 | Fastify + Socket.io bootstrap | `apps/realtime/src/index.ts` — server with health check | Local dev: Socket.io serves at `ws://localhost:3001` |
+| 6.2 | Redis pub/sub adapter | `@socket.io/redis-adapter` connected to ElastiCache | Two local instances broadcast messages between them |
+| 6.3 | JWT auth middleware | Socket.io `connection` handler verifies token, decorates `socket.data.userId` | Connection rejected without valid token |
+| 6.4 | SNS internal endpoint | `POST /internal/events` — subscription confirmation + event forwarding | SNS test publish → event emitted to correct Socket.io room |
+| 6.5 | `/presence` namespace | `user:online`, `user:offline` events; `is_online` flag in Neon | Connect → user appears online; disconnect → offline |
+| 6.6 | `/notifications` namespace | `notification:new`, `notification:read` events | SNS event → notification delivered to connected user's room |
+| 6.7 | `/chat` namespace | `message:send`, `message:read`, `typing:start`, `typing:stop` | Two clients in same room see messages in real time |
+| 6.8 | Dockerfile + ECR push | Multi-stage Docker build | `docker build` succeeds, image pushes to ECR |
+| 6.9 | Deploy to Fargate | ECS service update, ALB health check passes | `realtime.izimate.com/health` returns 200 |
+| 6.10 | SNS subscription confirmation | Fargate confirms HTTPS subscription from SNS | SNS subscription status = "Confirmed" in AWS console |
+| 6.11 | Socket.io client hooks | `packages/api-client/src/socket/` — `useSocket()`, `usePresence()`, `useNotifications()` | Mobile + web can connect, receive events via typed hooks |
+| 6.12 | Mobile — realtime connection | Socket.io connects on app launch with JWT | Connection established on login, disconnects on logout |
+| 6.13 | Web — realtime connection | Socket.io connects after auth | Same as mobile |
+| 6.14 | Integration test: SNS → Fargate → Client | API publishes event → SNS → Fargate → client receives | Client app receives realtime event within ~50ms of API action |
+
+**Verification:** Client connects to Socket.io via ALB. Presence updates flow. API publishes an SNS event → client receives it in real time.
+
+---
+
+## Phase 7 — Background Workers
+
+**Goal:** SQS consumers for email + push operational. EventBridge cron functions running. DLQ monitoring active.
+
+| # | Task | Deliverable | Acceptance Criteria |
+|---|------|------------|---------------------|
+| 7.1 | Email worker | `apps/workers/src/email.ts` — SQS consumer → Resend API | Test `queueEmail()` → worker sends email via Resend |
+| 7.2 | React Email templates | Base template + first transactional template (welcome email) | Template renders correctly, sent via Resend |
+| 7.3 | Push worker | `apps/workers/src/push.ts` — SQS consumer → Expo Push API | Test `queuePush()` → worker sends push via Expo SDK |
+| 7.4 | Push receipts cron | `apps/workers/src/cron/push-receipts.ts` — EventBridge every 15 min | Unprocessed tickets checked, invalid tokens purged |
+| 7.5 | Cleanup cron | `apps/workers/src/cron/cleanup.ts` — EventBridge daily | Stale records deactivated, expired data purged |
+| 7.6 | DLQ alarm verification | Send a poison message → verify DLQ alarm fires | CloudWatch alarm → Slack notification |
+| 7.7 | Worker deploy | All Lambda workers deployed via Pulumi | Workers running, SQS triggers active, EventBridge schedules visible |
+
+**Verification:** `queueEmail("test@example.com", "welcome", {})` → email arrives. `queuePush(userId, "Test", "Hello")` → push notification received on device. DLQ alarm fires for failed messages.
+
+---
+
+## Phase 8 — Push Notifications (Full Lifecycle)
+
+**Goal:** Complete push notification system from client registration through delivery and receipt checking.
+
+**Depends on:** Phase 6 (presence — `is_online` flag) + Phase 7 (push worker + receipt cron).
+
+| # | Task | Deliverable | Acceptance Criteria |
+|---|------|------------|---------------------|
+| 8.1 | `push_tokens` table | Drizzle schema + migration — per-device token storage | Table exists, FK to users with CASCADE delete |
+| 8.2 | `push_receipts` table | Drizzle schema + migration — ticket tracking | Table exists, `processed` flag defaults to false |
+| 8.3 | Push token API endpoint | `POST /api/users/push-token` — upsert token | Mobile sends token → upserted in DB; duplicate → updated timestamp |
+| 8.4 | Mobile — expo-notifications setup | Permission request, token registration on app launch | Permission granted → token sent to API → stored in DB |
+| 8.5 | Notification handler config | Foreground notification display settings | Notification shows alert, plays sound when app is in foreground |
+| 8.6 | Online/offline gating | Push worker checks `is_online` flag before sending | Online user → no push (realtime only). Offline user → push sent. |
+| 8.7 | Deep linking payload | Push data payload routes to correct screen on tap | Tap notification → app opens to relevant screen |
+| 8.8 | Receipt checking integration | Cron verifies delivery, purges invalid tokens | `DeviceNotRegistered` tokens removed from `push_tokens` table |
+| 8.9 | End-to-end test | Trigger event → user offline → push received → tap → deep link | Full lifecycle works |
+
+**Verification:** User logs out (offline). Another action triggers a push. User's device receives notification. Tap opens to the correct screen. Invalid tokens are cleaned up by the receipt cron.
+
+---
+
+## Phase 9 — Email, Image Upload, Payments, Search
+
+**Goal:** Remaining infrastructure features that most domain features will need.
+
+### 9a. Email (Resend)
+
+| # | Task | Deliverable | Acceptance Criteria |
+|---|------|------------|---------------------|
+| 9.1 | Email template system | React Email base layout + re-usable components | Templates render correct HTML |
+| 9.2 | Welcome email | Sent on user registration (triggered from user upsert route) | New user signs up → welcome email arrives |
+| 9.3 | Email sending integration test | `queueEmail()` → SQS → worker → Resend → inbox | Email arrives with correct template data |
+
+### 9b. Image Upload (Cloudflare R2)
+
+| # | Task | Deliverable | Acceptance Criteria |
+|---|------|------------|---------------------|
+| 9.4 | Presigned URL endpoint | `POST /api/uploads/presign` — returns PUT URL with 15min expiry | Client receives a working presigned URL |
+| 9.5 | Mobile — image picker + upload | Select/take photo → direct upload to R2 via presigned URL | Image appears in R2 bucket |
+| 9.6 | Web — file upload | File picker → direct upload to R2 | Same as mobile |
+| 9.7 | Image optimization | Cloudflare Image Transformations via URL params | `?width=400&format=webp` returns optimized image |
+| 9.8 | Avatar upload integration | Profile edit → upload avatar → store R2 key on user | User's avatar URL updates, optimized image shows in UI |
+
+### 9c. Payments (Stripe)
+
+| # | Task | Deliverable | Acceptance Criteria |
+|---|------|------------|---------------------|
+| 9.9 | Stripe checkout session | `POST /api/payments/checkout` → Stripe Checkout URL | Client redirected to Stripe hosted payment page |
+| 9.10 | Stripe webhook handler | `POST /webhooks/stripe` — signature verification + event processing | Test webhook from Stripe CLI → DB updated, email queued, SNS event published |
+| 9.11 | Stripe Connect setup | Provider onboarding + payout configuration | Provider connects Stripe account, receives test payout |
+| 9.12 | Payment status realtime | Webhook → SNS → Fargate → client notified | Client sees payment confirmation in real time |
+
+### 9d. Search (Postgres Full-Text)
+
+| # | Task | Deliverable | Acceptance Criteria |
+|---|------|------------|---------------------|
+| 9.13 | Full-text search helper | Drizzle query with `tsvector`/`tsquery` + `ts_rank` ordering | Search returns ranked results |
+| 9.14 | Search API endpoint | `GET /api/search?q=...` | Returns paginated, ranked results |
+| 9.15 | Client search hooks | `api-client` search function + React Query integration | Mobile + web search UI works with debounced input |
+
+**Verification:** Each sub-feature works independently. Email sends, images upload and display, payments process, search returns results.
+
+---
+
+## Phase 10 — CI/CD Pipeline
+
+**Goal:** Every PR is linted, type-checked, and tested. Merges to main trigger automated deploys.
+
+| # | Task | Deliverable | Acceptance Criteria |
+|---|------|------------|---------------------|
+| 10.1 | GitHub Actions — PR checks | Workflow: `pnpm lint`, `pnpm typecheck`, `pnpm test` | PR blocked if lint/types/tests fail |
+| 10.2 | Vitest setup | Unit test config for `apps/api`, `packages/shared`, `packages/db` | `pnpm test` runs all tests, coverage reported |
+| 10.3 | Vercel preview deploys | Web app deploys preview on every PR | PR gets a preview URL comment |
+| 10.4 | Neon branch per PR | Auto-create Neon branch on PR open, delete on merge | Preview deployment connects to isolated DB branch |
+| 10.5 | Lambda deploy workflow | GH Action: esbuild → `aws lambda update-function-code` on merge to main | API + workers deploy on merge, smoke test passes |
+| 10.6 | Fargate deploy workflow | GH Action: build Docker → push ECR → update ECS service on merge to main | New Fargate task rolls out, health check passes |
+| 10.7 | Pulumi IaC workflow | GH Action: `pulumi up` on merge to main (only when `infra/` changes) | Infrastructure changes applied automatically |
+| 10.8 | EAS Build configuration | `eas.json` with development, preview, production profiles | `eas build --profile preview` produces installable build |
+| 10.9 | E2E tests — Playwright (web) | Playwright config + first test suite (auth + profile flows) | `pnpm test:e2e` runs headlessly in CI |
+| 10.10 | E2E tests — Maestro (mobile) | Maestro flows for auth + profile | Maestro runs against dev build |
+
+**Verification:** Open a PR → checks run → preview deploys. Merge → Lambda + Fargate + web deploy automatically.
+
+---
+
+## Phase 11 — Observability & Hardening
+
+**Goal:** Errors are caught, logs are structured, failures are alerted on. Production readiness.
+
+| # | Task | Deliverable | Acceptance Criteria |
+|---|------|------------|---------------------|
+| 11.1 | Sentry — Lambda | `@sentry/aws-serverless` in API + workers | Thrown error → Sentry event with context |
+| 11.2 | Sentry — Fargate | `@sentry/node` in realtime server | Thrown error → Sentry event |
+| 11.3 | Sentry — Mobile | `@sentry/react-native` with Expo plugin | Crash → Sentry event with device info and stack trace |
+| 11.4 | Sentry — Web | `@sentry/nextjs` | Client + server errors → Sentry events |
+| 11.5 | Structured JSON logging | Pino logger configured in all server-side services | Logs output valid JSON with `level`, `timestamp`, `service`, `correlationId` |
+| 11.6 | Correlation ID middleware | API generates/forwards `X-Correlation-ID`; propagated to SQS + SNS | Single user action traceable across API → SQS → worker → SNS → Fargate |
+| 11.7 | CloudWatch alarms | Alarms for: Lambda error rate > 5%, P99 > 5s, Fargate unhealthy | Alarms fire correctly when conditions are simulated |
+| 11.8 | Slack alerting | CloudWatch alarms + Sentry alerts → Slack channel | Alert appears in Slack within 1 minute of trigger |
+| 11.9 | Health check hardening | All `/health` endpoints check their dependencies (DB, Redis, external) | Health endpoint returns detailed status with component checks |
+| 11.10 | Request logging | API logs every request: method, path, status, duration, userId | Structured logs queryable in CloudWatch Logs Insights |
+
+**Verification:** Trigger a deliberate error → Sentry captures it → Slack alert fires. Trace a request end-to-end via correlation ID in CloudWatch.
+
+---
+
+## Task Dependency Graph
 
 ```mermaid
 graph LR
-    P1["Phase 1: Monorepo Scaffold"]
-    P2["Phase 2: External Accounts"]
+    P0["Phase 0<br/>Monorepo Scaffold"]
+    P1["Phase 1<br/>Infrastructure"]
+    P2["Phase 2<br/>Database"]
+    P3["Phase 3<br/>Auth"]
+    P4["Phase 4<br/>API Server Core"]
+    P5["Phase 5<br/>Users (Vertical Slice)"]
+    P6["Phase 6<br/>Realtime Server"]
+    P7["Phase 7<br/>Background Workers"]
+    P8["Phase 8<br/>Push Notifications"]
+    P9["Phase 9<br/>Email + Upload +<br/>Payments + Search"]
+    P10["Phase 10<br/>CI/CD"]
+    P11["Phase 11<br/>Observability"]
 
-    P1 --> P3["Phase 3: @izimate/shared"]
-    P3 --> P4["Phase 4: @izimate/db"]
-
-    P2 --> P5["Phase 5: Database (Neon)"]
+    P0 --> P1 --> P2 --> P3 --> P4
     P4 --> P5
-
-    P1 --> P6["Phase 6: Infrastructure (IaC)"]
-    P2 --> P6
-
-    P5 --> P7["Phase 7: API Server"]
+    P4 --> P6
     P4 --> P7
-    P6 --> P7
-
-    P5 --> P8["Phase 8: Realtime Server"]
-    P4 --> P8
-    P6 --> P8
-
-    P7 --> P9["Phase 9: Workers"]
-    P6 --> P9
-
-    P3 --> P10["Phase 10: @izimate/api-client"]
-    P7 --> P10
-    P8 --> P10
-
-    P10 --> P11["Phase 11: Web App"]
-    P2 --> P11
-
-    P10 --> P12["Phase 12: Mobile App"]
-    P2 --> P12
-
-    P7 --> P13["Phase 13: Payments"]
-    P6 --> P13
-
-    P7 --> P14["Phase 14: Image Uploads"]
-    P2 --> P14
-
-    P9 --> P15["Phase 15: Push Notifications"]
-    P12 --> P15
-
-    P9 --> P16["Phase 16: Email"]
-
-    P1 --> P17["Phase 17: CI/CD"]
-    P6 --> P17
-
-    P17 --> P18["Phase 18: Monitoring"]
-    P7 --> P18
+    P6 & P7 --> P8
+    P7 --> P9
+    P5 --> P10
+    P5 --> P11
 ```
 
-> **Note:** Phase 1 and Phase 2 have **no** dependency on each other — they run in parallel.
+**Critical path:** P0 → P1 → P2 → P3 → P4 → P5 (first usable feature)
+
+**Parallelizable after Phase 4:** Phases 5, 6, and 7 can be worked on simultaneously once the API server core is complete.
 
 ---
 
-## Infrastructure Dependency Map (Phase 6 Detail)
+## Milestone Checkpoints
 
-Shows every AWS resource, its internal dependencies, and connections to external services.
-
-```mermaid
-graph TB
-    subgraph Phase6a["6a · Route 53 + ACM"]
-        HZ["Route 53 Hosted Zone<br/>(check if exists → create if not)"]
-        ACM["ACM Certificate<br/>*.izimate.com"]
-        HZ -->|DNS validation records| ACM
-    end
-
-    subgraph Phase6b["6b · VPC + Networking"]
-        VPC["VPC 10.0.0.0/16"]
-        PubA["Public Subnet A"]
-        PubB["Public Subnet B"]
-        Priv["Private Subnet"]
-        SGalb["SG: ALB<br/>inbound 443"]
-        SGfg["SG: Fargate<br/>inbound from ALB"]
-        SGrd["SG: Redis<br/>inbound from Fargate"]
-        VPC --> PubA & PubB & Priv
-        VPC --> SGalb & SGfg & SGrd
-    end
-
-    subgraph Phase6c["6c · ElastiCache"]
-        Redis["ElastiCache Redis<br/>t4g.micro"]
-    end
-    Priv --> Redis
-    SGrd --> Redis
-
-    subgraph Phase6d["6d · SQS Queues"]
-        EmailQ["SQS: izimate-email"]
-        EmailDLQ["SQS: izimate-email-dlq"]
-        PushQ["SQS: izimate-push"]
-        PushDLQ["SQS: izimate-push-dlq"]
-        EmailQ -->|3 retries → | EmailDLQ
-        PushQ -->|3 retries → | PushDLQ
-    end
-
-    subgraph Phase6e["6e · SNS"]
-        SNS["SNS: izimate-events"]
-    end
-
-    subgraph Phase6f["6f · API Gateway + Lambda"]
-        APIGW["API Gateway HTTP API<br/>api.izimate.com"]
-        LambdaAPI["Lambda: izimate-api<br/>Fastify · Node 22 · arm64<br/>512 MB · 30s · NO VPC"]
-        APIGW --> LambdaAPI
-    end
-    ACM --> APIGW
-    HZ -->|A-alias record| APIGW
-    LambdaAPI -->|send messages| EmailQ & PushQ
-    LambdaAPI -->|publish events| SNS
-
-    subgraph Phase6g["6g · Worker Lambdas + EventBridge"]
-        LambdaEmail["Lambda: email-worker<br/>SQS trigger"]
-        LambdaPush["Lambda: push-worker<br/>SQS trigger"]
-        EB["EventBridge Scheduler"]
-        LambdaCronReceipts["Lambda: push-receipts<br/>rate(15 min)"]
-        LambdaCronCleanup["Lambda: cleanup<br/>rate(1 day)"]
-        EB --> LambdaCronReceipts & LambdaCronCleanup
-    end
-    EmailQ -->|trigger| LambdaEmail
-    PushQ -->|trigger| LambdaPush
-    LambdaCronReceipts -->|send messages| PushQ
-    LambdaCronCleanup -->|send messages| EmailQ
-    LambdaCronReceipts -->|publish events| SNS
-    LambdaCronCleanup -->|publish events| SNS
-
-    subgraph Phase6h["6h · ALB + Fargate"]
-        ALB["ALB<br/>realtime.izimate.com<br/>sticky sessions · 3600s idle"]
-        Fargate["Fargate Service<br/>Fastify + Socket.io<br/>0.5 vCPU · 1 GB"]
-        ECR["ECR Repository"]
-        ALB --> Fargate
-    end
-    ACM --> ALB
-    HZ -->|A-alias record| ALB
-    PubA & PubB --> Fargate
-    SGfg --> Fargate
-    SGalb --> ALB
-    Redis -->|pub/sub adapter| Fargate
-    SNS -->|HTTPS subscription| ALB
-    Fargate -->|send messages| PushQ
-
-    subgraph External["External Services (not in AWS)"]
-        Neon["Neon Postgres"]
-        Auth0["Auth0"]
-        Stripe["Stripe"]
-        R2["Cloudflare R2"]
-        Resend["Resend"]
-        ExpoPush["Expo Push API"]
-    end
-
-    LambdaAPI -->|Drizzle HTTP| Neon
-    LambdaAPI -->|JWKS verify| Auth0
-    LambdaAPI -->|checkout / webhooks| Stripe
-    LambdaAPI -->|presigned URLs| R2
-    Fargate -->|Drizzle| Neon
-    Fargate -->|JWKS verify| Auth0
-    LambdaEmail -->|send email| Resend
-    LambdaPush -->|batch push| ExpoPush
-    LambdaCronReceipts -->|check receipts| ExpoPush
-```
-
-### How Resources Connect (Quick Reference)
-
-| Producer | → | Consumer | Channel |
-|----------|---|----------|---------|
-| API Lambda, Cron Lambdas | → | Email Worker | SQS `izimate-email` |
-| API Lambda, Cron Lambdas, Fargate | → | Push Worker | SQS `izimate-push` |
-| API Lambda, Cron Lambdas | → | Fargate (Socket.io) | SNS `izimate-events` → HTTPS → ALB |
-| EventBridge Scheduler | → | `push-receipts` Lambda | Cron: `rate(15 min)` |
-| EventBridge Scheduler | → | `cleanup` Lambda | Cron: `rate(1 day)` |
-| SQS email queue | → | DLQ (email) | After 3 failed retries |
-| SQS push queue | → | DLQ (push) | After 3 failed retries |
-| Fargate instances | ↔ | Fargate instances | Redis pub/sub adapter |
-| Route 53 | → | ACM | DNS validation records |
-| ACM cert | → | API Gateway, ALB | TLS termination |
+| Milestone | After Phase | What You Can Demo |
+|-----------|------------|-------------------|
+| **M1 — Foundation** | Phase 2 | Monorepo builds. Lambda + Fargate deployed. DB connected. |
+| **M2 — Auth Works** | Phase 3 | User signs in on mobile + web. JWT verified by API. |
+| **M3 — First Feature** | Phase 5 | Full vertical slice: sign in → view profile → edit → see changes. Validates entire architecture. |
+| **M4 — Realtime** | Phase 6 | Client receives events in real time. Presence works. |
+| **M5 — Workers** | Phase 7 | Email sends. Push delivers. Cron runs. DLQ alerts fire. |
+| **M6 — Full Infrastructure** | Phase 9 | All infrastructure features operational. Platform ready for domain features. |
+| **M7 — Production Ready** | Phase 11 | CI/CD automated. Errors tracked. Logs structured. Alerts working. |
 
 ---
 
-## Phase 1 — Monorepo Scaffolding
-
-**Prerequisites:** None (greenfield start)
-**Estimated effort:** 1–2 days
-
-### Deliverables
-
-1. **Root workspace config**
-   - `pnpm-workspace.yaml` declaring `apps/*` and `packages/*`
-   - Root `package.json` with workspace scripts (`build`, `dev`, `lint`, `typecheck`, `test`)
-   - Root `tsconfig.json` (base config, strict mode, paths)
-   - `.npmrc` (hoist patterns for Expo/React Native compatibility)
-   - `.gitignore`, `.editorconfig`, `.prettierrc`, `eslint.config.js`
-
-2. **App stubs** — empty `package.json` + `tsconfig.json` for each:
-   - `apps/mobile` (Expo SDK 54, Expo Router v6)
-   - `apps/web` (Next.js 16, App Router)
-   - `apps/api` (Fastify 5, `@fastify/aws-lambda`)
-   - `apps/realtime` (Fastify 5, Socket.io 4)
-   - `apps/workers` (bare Lambda handlers)
-
-3. **Package stubs** — empty `package.json` + `tsconfig.json` + `src/index.ts` for each:
-   - `packages/shared` (`@izimate/shared`)
-   - `packages/api-client` (`@izimate/api-client`)
-   - `packages/db` (`@izimate/db`)
-
-4. **Infra directory**
-   - `infra/` scaffolded for Pulumi (TypeScript, S3 state backend)
-   - `Pulumi.yaml` (project definition), `Pulumi.prod.yaml`, `Pulumi.staging.yaml`
-   - `index.ts` entry point + per-resource modules (`vpc.ts`, `lambda.ts`, `sqs.ts`, `sns.ts`, `eventbridge.ts`, `fargate.ts`, `elasticache.ts`, `alb.ts`, `api-gateway.ts`)
-
-5. **Verify** — `pnpm install` succeeds, `pnpm -r run build` succeeds (empty builds), all internal `workspace:*` references resolve.
-
-### Exit Criteria
-- All workspace packages resolve correctly.
-- A change in `packages/shared` is picked up by `apps/api` during dev.
-- `pnpm typecheck` passes across the entire workspace.
-
----
-
-## Phase 2 — External Service Accounts & Configuration
-
-**Prerequisites:** None (can run in parallel with Phase 1)
-**Estimated effort:** 1–2 days
-
-### Deliverables
-
-| Service | Setup Tasks |
-|---------|------------|
-| **Auth0** | Create tenant → create SPA application (mobile) → create Regular Web application (web) → create API audience (`api.izimate.com`) → configure social connections (Google, Apple) → note `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`, `AUTH0_AUDIENCE` |
-| **Neon** | Create project → create `dev` and `prod` databases → enable branching → note `DATABASE_URL` |
-| **Cloudflare R2** | Create R2 bucket (`izimate-uploads`) → create API token with read/write → configure custom domain for CDN → note `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME` |
-| **Stripe** | Create account → create Connect platform (if needed) → configure webhook endpoints → note `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PUBLISHABLE_KEY` |
-| **Resend** | Create account → verify domain (`izimate.com`) → create API key → note `RESEND_API_KEY` |
-| **Sentry** | Create organization → create projects: `izimate-mobile`, `izimate-web`, `izimate-api`, `izimate-realtime` → note DSN per project |
-| **Expo** | Create project on expo.dev → configure EAS → note `EXPO_PROJECT_ID` |
-| **AWS** | Create IAM user/role for deployment → configure AWS CLI profile → note `AWS_ACCOUNT_ID`, `AWS_REGION` (domain/certs are handled automatically by IaC in Phase 6) |
-
-### Environment Files
-- Create `.env.example` at workspace root listing every required variable.
-- Create per-app `.env.local` files (git-ignored) for local development.
-- Document which env vars are needed by which app/package.
-
-### Exit Criteria
-- All service accounts created and API keys secured.
-- `.env.example` is complete and documented.
-- Auth0 tenant returns tokens for a test user.
-- Neon database is reachable from a local Drizzle connection test.
-
----
-
-## Phase 3 — `@izimate/shared` Package
-
-**Prerequisites:** Phase 1 (monorepo structure exists)
-**Estimated effort:** 3–5 days
-
-### Deliverables
-
-This package is **isomorphic** — zero server-only dependencies. Consumed by all apps and packages.
-
-1. **`src/types/`** — Domain TypeScript types
-   - User, profile, roles
-   - Core business entities (domain-specific — determined by product requirements)
-   - Enums for statuses, categories, etc.
-
-2. **`src/schemas/`** — Zod validation schemas
-   - One schema file per domain entity (e.g., `user.ts`, `resource.ts`)
-   - Both "full" schemas (for API responses) and "create/update" schemas (for mutations)
-   - Exported as named exports: `UserSchema`, `CreateUserSchema`, `UpdateUserSchema`, etc.
-
-3. **`src/constants/`** — Shared constants
-   - Status enums
-   - Error codes
-   - Pagination defaults
-   - Feature flags type definitions
-
-4. **`src/utils/`** — Pure utility functions
-   - Currency formatting
-   - Date formatting/parsing
-   - Price calculation helpers
-   - String utilities (slugify, truncate)
-
-5. **`src/design/`** — Design tokens
-   - Color palette
-   - Spacing scale
-   - Typography scale
-   - Border radii, shadows
-
-6. **Build config** — `tsup` or plain `tsc` to emit ESM + CJS + `.d.ts`
-
-### Exit Criteria
-- `pnpm --filter @izimate/shared build` succeeds.
-- Zod schemas are importable and parseable in a test file.
-- Types auto-complete in consuming apps (verified in IDE).
-- No Node.js or server-only imports anywhere in the package.
-
----
-
-## Phase 4 — `@izimate/db` Package
-
-**Prerequisites:** Phase 3 (`@izimate/shared` for types/schemas)
-**Estimated effort:** 5–7 days
-
-### Deliverables
-
-This package is **server-only** — never imported by mobile or web.
-
-1. **`src/schema/`** — Drizzle table definitions (source of truth)
-   - `users.ts` — users table
-   - `push-tokens.ts` — Expo push tokens (multi-device)
-   - `push-receipts.ts` — Expo ticket tracking for receipt checking
-   - Domain entity tables (determined by product requirements)
-   - All relations defined via Drizzle's `relations()` API
-
-2. **`src/index.ts`** — DB client setup
-   - Neon serverless HTTP driver (`@neondatabase/serverless`)
-   - Drizzle ORM instance (`drizzle(neon(DATABASE_URL))`)
-   - Re-export all schema tables and Drizzle operators (`eq`, `and`, `lte`, etc.)
-
-3. **`src/auth.ts`** — JWT verification
-   - `verifyToken(token: string)` using `jose` + Auth0 JWKS endpoint
-   - Caches JWKS keys automatically (jose handles this)
-   - Used by API, realtime, and workers
-
-4. **`src/events.ts`** — SNS event publishing
-   - `publishEvent(event: AppEvent)` helper
-   - Uses `@aws-sdk/client-sns`
-   - `AppEvent` type defined in `@izimate/shared`
-
-5. **`src/queue.ts`** — SQS queue helpers
-   - `queueEmail(to, template, data)` → email SQS queue
-   - `queuePush(userId, title, body, data?)` → push SQS queue
-   - Uses `@aws-sdk/client-sqs`
-
-6. **Drizzle config** — `drizzle.config.ts` for migration generation
-
-### Exit Criteria
-- `pnpm --filter @izimate/db build` succeeds.
-- `drizzle-kit generate` produces migration SQL.
-- `verifyToken()` validates a real Auth0 JWT in a test.
-- `db.select().from(users)` compiles with full type inference.
-
----
-
-## Phase 5 — Database Setup & Migrations
-
-**Prerequisites:** Phase 2 (Neon account), Phase 4 (`@izimate/db` schema defined)
-**Estimated effort:** 1–2 days
-
-### Deliverables
-
-1. **Initial migration** — generated from Drizzle schema in Phase 4
-   - All core tables: users, push_tokens, push_receipts, domain entities
-   - Indexes on foreign keys and commonly queried columns
-   - Full-text search indexes on searchable columns (tsvector)
-
-2. **Apply to Neon dev branch**
-   - `drizzle-kit push` for dev
-   - `drizzle-kit migrate` for prod (committed migration files)
-
-3. **Seed script** (`packages/db/src/seed.ts`)
-   - Creates test users matching Auth0 test accounts
-   - Creates sample domain data for development
-
-4. **Branching workflow documented**
-   - How to create a Neon branch for a PR
-   - How to apply migrations to the branch
-   - How to merge/delete branches
-
-### Exit Criteria
-- Dev database has all tables, relations, and indexes.
-- Seed script populates test data.
-- `db.select().from(users)` returns seeded rows.
-- Migration files are committed and version-controlled.
-
----
-
-## Phase 6 — Infrastructure (IaC)
-
-**Prerequisites:** Phase 1 (repo exists), Phase 2 (AWS account configured)
-**Estimated effort:** 5–8 days
-
-> **IaC tool: Pulumi (TypeScript)** — same language as the app, state stored in S3.
-
-### Sub-phases (ordered by dependency)
-
-#### 6a. Route 53 Hosted Zone + ACM Certificates (Day 1)
-- **Hosted zone** — Pulumi checks if a Route 53 hosted zone for `izimate.com` already exists:
-  - If it exists → look up via `aws.route53.getZone()` data source
-  - If it does not exist → create via `new aws.route53.Zone()`
-  - Output the zone ID and name servers for use by all subsequent DNS records
-- **ACM certificates** — created automatically after the hosted zone is confirmed:
-  - `*.izimate.com` wildcard cert (covers `api.izimate.com`, `realtime.izimate.com`, etc.)
-  - Or individual certs: `api.izimate.com` + `realtime.izimate.com`
-  - DNS validation via Route 53 (`aws.acm.CertificateValidation` + `aws.route53.Record`)
-  - Waits for validation to complete before downstream resources reference the cert ARN
-- **Important:** If the domain registrar is not Route 53, the output name servers must be set as NS records at the registrar. The IaC should output the name servers clearly for this step.
-
-#### 6b. VPC + Networking (Day 1–2)
-- VPC `10.0.0.0/16`
-- 2 public subnets (AZ-a, AZ-b) for Fargate
-- 1 private subnet for ElastiCache Redis
-- Security groups:
-  - `sg-fargate`: inbound from ALB only (port 3001), outbound all
-  - `sg-redis`: inbound from `sg-fargate` only (port 6379), no outbound
-  - `sg-alb`: inbound 443 from internet, outbound to `sg-fargate`
-
-#### 6c. ElastiCache Redis (Day 2)
-- `t4g.micro` in private subnet
-- Single-node (no cluster needed at startup)
-- Security group `sg-redis`
-- Output: `REDIS_URL` for Fargate env
-
-#### 6d. SQS Queues (Day 2)
-- `izimate-email` queue + `izimate-email-dlq` (dead-letter, 3 retries)
-- `izimate-push` queue + `izimate-push-dlq` (dead-letter, 3 retries)
-- Output: `EMAIL_QUEUE_URL`, `PUSH_QUEUE_URL`, queue ARNs for IAM policies
-
-#### 6e. SNS Topic (Day 2)
-- `izimate-events` topic
-- Output: `EVENTS_TOPIC_ARN`
-- HTTPS subscription to ALB endpoint added in 6h (after ALB exists)
-
-#### 6f. API Gateway + Lambda (Day 3–4)
-- HTTP API (not REST API)
-- Custom domain: `api.izimate.com` (uses ACM cert from 6a — auto-validated)
-- Route 53 alias record: `api.izimate.com` → API Gateway domain (created automatically)
-- CORS: `izimate.com` + `localhost:*`
-- Throttle: 1,000 burst / 500 sustained
-- Lambda function: `izimate-api`
-  - Runtime: Node.js 22, arm64
-  - Memory: 512 MB, Timeout: 30s
-  - **No VPC** — public internet access
-  - IAM role: allow SQS send, SNS publish, CloudWatch logs
-  - Environment vars: `DATABASE_URL`, `AUTH0_DOMAIN`, `AUTH0_AUDIENCE`, `EMAIL_QUEUE_URL`, `PUSH_QUEUE_URL`, `EVENTS_TOPIC_ARN`, `R2_*`, `STRIPE_*`
-
-#### 6g. Worker Lambdas (Day 4)
-- `izimate-email-worker` — triggered by `izimate-email` SQS queue
-  - Env: `RESEND_API_KEY`, `DATABASE_URL`
-- `izimate-push-worker` — triggered by `izimate-push` SQS queue
-  - Env: `DATABASE_URL`
-- Cron Lambdas (EventBridge Scheduler):
-  - `izimate-push-receipts` — `rate(15 minutes)` — Env: `DATABASE_URL`
-  - `izimate-cleanup` — `rate(1 day)` — Env: `DATABASE_URL`
-- All: Node.js 22, arm64, 256 MB, 60s timeout, no VPC
-
-#### 6h. ALB + Fargate (Day 5–6)
-- ALB:
-  - HTTPS listener (443, uses ACM cert from 6a — auto-validated)
-  - Route 53 alias record: `realtime.izimate.com` → ALB DNS name (created automatically)
-  - Target group → Fargate tasks, port 3001
-  - Health check: `GET /health`
-  - Sticky sessions: AWSALB cookie, 86400s
-  - Idle timeout: 3600s
-- ECS Cluster + Fargate Service:
-  - 0.5 vCPU, 1 GB memory
-  - Desired count: 1
-  - Public subnets (auto-assign public IP)
-  - Security group `sg-fargate`
-  - Environment vars: `DATABASE_URL`, `REDIS_URL`, `AUTH0_DOMAIN`, `AUTH0_AUDIENCE`, `EVENTS_TOPIC_ARN`
-- ECR repository for Docker image
-- SNS subscription: HTTPS → ALB endpoint `/internal/events`
-- Auto-scaling: CPU > 70% → add task
-
-#### 6i. DNS Verification (Day 6)
-- All records are created automatically by the IaC in their respective sub-phases:
-  - `api.izimate.com` → API Gateway custom domain (created in 6f)
-  - `realtime.izimate.com` → ALB DNS name (created in 6h)
-- Remaining record added later:
-  - `izimate.com` / `www.izimate.com` → Vercel CNAME (configured in Phase 11)
-- **If domain registrar ≠ Route 53:** verify NS delegation is pointing to the Route 53 hosted zone name servers (output from 6a)
-
-### Exit Criteria
-- `pulumi up` succeeds with no errors.
-- API Gateway returns 502 (Lambda exists but has no code yet — expected).
-- ALB health check target returns unhealthy (Fargate has no image yet — expected).
-- SQS queues, SNS topic, Redis all reachable from their expected consumers.
-- Route 53 hosted zone exists and NS delegation is correct.
-- ACM certificates are validated and active.
-- All DNS records resolve (`api.izimate.com`, `realtime.izimate.com`).
-
----
-
-## Phase 7 — API Server (`apps/api`)
-
-**Prerequisites:** Phase 4 (`@izimate/db`), Phase 5 (database migrated), Phase 6f (Lambda + API Gateway deployed)
-**Estimated effort:** 7–10 days
-
-### Sub-phases
-
-#### 7a. Fastify Bootstrap (Day 1–2)
-- `apps/api/src/index.ts` — Fastify app + Lambda adapter (as in system design §7)
-- Zod type provider setup (`validatorCompiler`, `serializerCompiler`)
-- CORS plugin (`@fastify/cors`)
-- Health check route: `GET /health` → `{ status: 'ok' }`
-- esbuild bundling config → single `.mjs` output for Lambda
-- **Deploy & verify:** `GET https://api.izimate.com/health` returns `200`
-
-#### 7b. Auth Middleware (Day 2–3)
-- `apps/api/src/middleware/auth.ts` — Fastify plugin
-  - Extracts `Authorization: Bearer <token>` header
-  - Calls `verifyToken()` from `@izimate/db`
-  - Decorates `request.userId` with the Auth0 `sub` claim
-  - Rejects with `401` if missing/invalid
-- Register under authed scope (webhooks excluded)
-- **Test:** Authenticated request with valid Auth0 JWT succeeds; request without token returns 401.
-
-#### 7c. User Routes (Day 3–4)
-- `POST /api/users/sync` — upsert user from Auth0 profile (called on first login)
-- `GET /api/users/me` — return current user profile
-- `PATCH /api/users/me` — update profile
-- `POST /api/users/push-token` — register Expo push token (as in system design §11)
-- All validated with Zod schemas from `@izimate/shared`
-
-#### 7d. Upload Routes (Day 4–5)
-- `POST /api/uploads/presign` — generate presigned PUT URL for R2
-  - Uses `@aws-sdk/client-s3` with R2-compatible endpoint
-  - Returns URL + key, expiry 15 min
-- Clients upload directly to R2, then attach the key to a resource
-
-#### 7e. Webhook Routes (Day 5–6)
-- `POST /webhooks/stripe` — Stripe event handler
-  - Verify signature with `stripe.webhooks.constructEvent()`
-  - Handle `checkout.session.completed`, `invoice.payment_succeeded`, etc.
-  - Update DB + queue email + publish SNS event
-  - No auth middleware (uses Stripe signature verification)
-
-#### 7f. Domain Routes (Day 6–10)
-- Route modules per domain entity (CRUD + business logic)
-- Each route uses Zod schemas from `@izimate/shared` for validation
-- Each route uses `@izimate/db` for database access
-- SNS events published for mutations that need realtime propagation
-- SQS messages queued for emails/push notifications
-
-### Exit Criteria
-- All routes return correct responses with valid Auth0 JWTs.
-- Zod validation rejects malformed requests with structured errors.
-- Webhook signature verification blocks unsigned requests.
-- Presigned URL upload flow works end-to-end with R2.
-- Domain CRUD operations persist to Neon and are queryable.
-
----
-
-## Phase 8 — Realtime Server (`apps/realtime`)
-
-**Prerequisites:** Phase 4 (`@izimate/db`), Phase 5 (database), Phase 6h (Fargate + ALB + Redis deployed)
-**Estimated effort:** 5–7 days
-
-### Sub-phases
-
-#### 8a. Fastify + Socket.io Bootstrap (Day 1–2)
-- `apps/realtime/src/index.ts` — Fastify + Socket.io setup
-- Redis adapter (`@socket.io/redis-adapter` + `redis` client)
-- Health check: `GET /health` → `{ status: 'ok', connections: N }`
-- Dockerfile (Node.js 22 slim)
-- Build → push to ECR → deploy to Fargate
-- **Verify:** ALB health check passes, WebSocket connection establishes
-
-#### 8b. Auth Middleware (Day 2–3)
-- Socket.io `connection` middleware
-  - Extracts `auth.token` from handshake
-  - Calls `verifyToken()` from `@izimate/db`
-  - Attaches `socket.data.userId`
-  - Rejects with `next(new Error('unauthorized'))` if invalid
-- **Test:** Socket.io connection with valid JWT succeeds; without token rejects.
-
-#### 8c. Namespaces + Handlers (Day 3–5)
-- `/chat` namespace — messaging
-  - `message:send` → persist to DB → broadcast to room
-  - `message:read` → update read receipt → broadcast
-  - `typing:start` / `typing:stop` → broadcast to room (no persistence)
-  - Room = conversation ID
-- `/presence` namespace — online status
-  - Join room on connect (room = user ID or group ID)
-  - `user:online` / `user:offline` on connect/disconnect
-  - Optional: `user:away` on idle detection
-- `/notifications` namespace — in-app alerts
-  - Room = user ID
-  - `notification:new` → emitted by internal events endpoint
-  - `notification:read` → update DB
-
-#### 8d. Internal Events Endpoint (Day 5–6)
-- `POST /internal/events` — receives SNS messages via ALB
-  - SNS subscription confirmation handler
-  - Event parsing → emit to correct namespace/room
-  - As specified in system design §8
-
-#### 8e. Presence Tracking (Day 6–7)
-- On connect → set Redis key or DB flag (user is online)
-- On disconnect → clear presence
-- Push worker uses this to decide: realtime-only vs push notification
-
-### Exit Criteria
-- WebSocket connections work through ALB with sticky sessions.
-- Chat messages persist and broadcast to correct rooms.
-- Presence events fire on connect/disconnect.
-- SNS → Fargate `/internal/events` pipeline delivers events to Socket.io rooms.
-- Redis pub/sub correctly syncs events across multiple Fargate tasks (if scaled to 2).
-
----
-
-## Phase 9 — Workers (`apps/workers`)
-
-**Prerequisites:** Phase 6g (worker Lambdas + SQS deployed), Phase 7 (API queues messages)
-**Estimated effort:** 3–5 days
-
-### Sub-phases
-
-#### 9a. Email Worker (Day 1–2)
-- `apps/workers/src/email.ts` — SQS handler
-  - Parse message: `{ to, template, data }`
-  - Load React Email template (or simple HTML)
-  - Send via Resend SDK
-  - Errors → SQS retry (3x) → DLQ
-- **Test:** Queue a message to `izimate-email` → verify email arrives.
-
-#### 9b. Push Worker (Day 2–3)
-- `apps/workers/src/push.ts` — SQS handler (as in system design §11)
-  - Look up push tokens from DB
-  - Batch send via `expo-server-sdk`
-  - Store ticket IDs in `push_receipts` table
-  - Remove `DeviceNotRegistered` tokens immediately
-- **Test:** Queue a push message → verify Expo Push API receives it.
-
-#### 9c. Cron: Push Receipts (Day 3–4)
-- `apps/workers/src/cron/push-receipts.ts` — EventBridge (every 15 min)
-  - Query unprocessed receipts from `push_receipts`
-  - Check receipts via Expo SDK
-  - Purge invalid tokens, mark receipts as processed
-
-#### 9d. Cron: Cleanup (Day 4–5)
-- `apps/workers/src/cron/cleanup.ts` — EventBridge (daily)
-  - Deactivate expired/stale records
-  - Purge old processed push receipts
-  - Any domain-specific cleanup
-
-### Exit Criteria
-- Email worker sends emails via Resend on SQS trigger.
-- Push worker sends notifications via Expo Push API on SQS trigger.
-- Cron jobs execute on schedule and update DB correctly.
-- DLQs capture failed messages after 3 retries.
-
----
-
-## Phase 10 — `@izimate/api-client` Package
-
-**Prerequisites:** Phase 3 (`@izimate/shared` schemas), Phase 7 (API running), Phase 8 (realtime running)
-**Estimated effort:** 3–5 days
-
-### Deliverables
-
-This package is consumed by **both** mobile and web — typed HTTP and Socket.io client.
-
-1. **`src/http/client.ts`** — Base HTTP client
-   - Thin `fetch` wrapper with base URL (`api.izimate.com`)
-   - Automatic `Authorization: Bearer <token>` injection
-   - JSON serialization/deserialization
-   - Error handling (parse API error responses)
-   - Token refresh on 401 (platform-specific callback)
-
-2. **`src/http/<domain>.ts`** — Typed API functions per domain
-   - Return types derived from Zod schemas in `@izimate/shared`
-   - Each function maps to an API endpoint (as in system design §7)
-   - Example: `resourcesApi.list()`, `resourcesApi.create(data)`, `usersApi.syncProfile()`
-
-3. **`src/socket/client.ts`** — Socket.io client setup
-   - Connect to `realtime.izimate.com` with auth token
-   - Auto-reconnect with exponential backoff
-   - Namespace-aware connection management
-
-4. **`src/socket/hooks.ts`** — React hooks for Socket.io
-   - `useChatMessages(conversationId)` — subscribe to chat room
-   - `usePresence(userId)` — subscribe to presence events
-   - `useNotifications()` — subscribe to notification events
-   - All hooks manage subscribe/unsubscribe lifecycle
-
-5. **`src/hooks/queries.ts`** — React Query hook wrappers (optional convenience layer)
-   - `useUser()`, `useResources()`, etc.
-   - Pre-configured `queryKey` and `queryFn`
-
-### Exit Criteria
-- HTTP client makes authenticated requests to the live API.
-- Socket.io client connects to the realtime server.
-- TypeScript auto-complete works for all API functions and hooks.
-- Types match between API responses and client-inferred types.
-
----
-
-## Phase 11 — Web App (`apps/web`)
-
-**Prerequisites:** Phase 2 (Auth0 web app configured), Phase 10 (`@izimate/api-client`)
-**Estimated effort:** 10–15 days
-
-### Sub-phases
-
-#### 11a. Next.js 16 Setup (Day 1–2)
-- `apps/web/` — Next.js App Router with TypeScript
-- Tailwind CSS + design tokens from `@izimate/shared/design`
-- Auth0 SDK setup (`@auth0/nextjs-auth0`)
-  - `/api/auth/login`, `/api/auth/callback`, `/api/auth/logout` route handlers
-  - These are the **only** API routes in Next.js
-- Middleware for auth state checks on protected pages
-- React Query provider (`QueryClientProvider`)
-- Vercel config (`vercel.json`)
-
-#### 11b. Auth Flow (Day 2–3)
-- Login page → Auth0 Universal Login redirect
-- Callback handler → store tokens in encrypted session cookie
-- Token injection into `@izimate/api-client` (from session cookie, server-side BFF pattern or client-side)
-- Protected route wrapper (redirect to login if no session)
-- User sync on first login (`usersApi.syncProfile()`)
-
-#### 11c. Layout + Navigation (Day 3–5)
-- Root layout with header, sidebar/nav, footer
-- Dashboard/home page
-- Responsive design (mobile-first)
-
-#### 11d. Core Pages (Day 5–15)
-- Domain-specific pages using `@izimate/api-client` hooks
-- Server components where possible (data fetching)
-- Client components for interactive features
-- Socket.io integration for realtime features (chat, notifications)
-- Image upload UI using presigned URL flow
-
-#### 11e. Vercel Deployment (Day 15)
-- Connect GitHub repo → Vercel
-- Configure environment variables
-- Custom domain: `izimate.com` / `www.izimate.com`
-- Verify production deployment
-
-### Exit Criteria
-- Auth flow works end-to-end (login → session → API calls → logout).
-- All data flows through `api.izimate.com` (no Next.js data API routes).
-- Realtime features (chat, notifications) work via Socket.io.
-- Production deployment on Vercel accessible at `izimate.com`.
-
----
-
-## Phase 12 — Mobile App (`apps/mobile`)
-
-**Prerequisites:** Phase 2 (Auth0 + Expo configured), Phase 10 (`@izimate/api-client`)
-**Estimated effort:** 10–15 days
-
-### Sub-phases
-
-#### 12a. Expo SDK 54 Setup (Day 1–2)
-- `apps/mobile/` — Expo with Expo Router v6
-- `expo-auth-session` for Auth0 integration
-- `expo-secure-store` for token storage (native keychain)
-- React Query provider
-- Zustand stores: `userStore`, `uiStore`
-- `app.config.js` / `eas.json` configuration
-
-#### 12b. Auth Flow (Day 2–3)
-- Auth0 Universal Login via in-app browser
-- Token storage in `expo-secure-store`
-- Token injection into `@izimate/api-client`
-- Auto-refresh on token expiry
-- User sync on first login
-
-#### 12c. Navigation + Screens (Day 3–5)
-- Expo Router file-based routing
-- Tab navigator / stack navigator
-- Protected route wrapper
-
-#### 12d. Core Screens (Day 5–12)
-- Domain screens using `@izimate/api-client` hooks
-- Socket.io integration (chat, presence, notifications)
-- Image upload (camera + gallery → presigned URL → R2)
-- Pull-to-refresh, infinite scroll, optimistic updates
-
-#### 12e. Push Notifications Setup (Day 12–13)
-- `expo-notifications` configuration
-- Permission request flow
-- Token registration → `POST /api/users/push-token`
-- Deep linking from notification tap (`data` payload)
-- Foreground notification handler
-
-#### 12f. EAS Build + Submit (Day 13–15)
-- `eas.json` profiles: development, preview, production
-- iOS + Android builds
-- App Store / Play Store submission prep
-
-### Exit Criteria
-- Auth flow works on both iOS and Android.
-- All data flows through `api.izimate.com`.
-- Realtime features work via Socket.io.
-- Push notifications received on physical devices.
-- EAS build succeeds for both platforms.
-
----
-
-## Phase 13 — Payments (Stripe)
-
-**Prerequisites:** Phase 7e (webhook route exists), Phase 6 (infra deployed)
-**Estimated effort:** 3–5 days
-
-### Deliverables
-
-1. **Checkout flow**
-   - `POST /api/payments/checkout` → create Stripe Checkout Session → return URL
-   - Client redirects to Stripe hosted page
-   - Stripe redirects back to success/cancel URL
-
-2. **Webhook handling** (already stubbed in Phase 7e)
-   - `checkout.session.completed` → activate subscription/purchase
-   - `invoice.payment_succeeded` → extend subscription
-   - `customer.subscription.deleted` → deactivate
-   - Queue confirmation email + publish SNS event for each
-
-3. **Connect payouts** (if applicable)
-   - Create connected accounts for service providers
-   - Transfer funds after service completion
-
-4. **Client integration**
-   - `@izimate/api-client` payment functions
-   - Web: Stripe.js redirect
-   - Mobile: Stripe React Native SDK or WebView checkout
-
-### Exit Criteria
-- Complete payment flow works end-to-end (test mode).
-- Webhooks correctly update DB state.
-- Confirmation emails sent on successful payment.
-- Realtime notification delivered to affected users.
-
----
-
-## Phase 14 — Image Uploads (Cloudflare R2)
-
-**Prerequisites:** Phase 7d (presigned URL route), Phase 2 (R2 configured)
-**Estimated effort:** 2–3 days
-
-### Deliverables
-
-1. **Presigned URL generation** (already in Phase 7d)
-2. **Client upload components**
-   - Web: drag-and-drop + file picker → direct PUT to R2
-   - Mobile: camera/gallery picker → direct PUT to R2
-3. **Image serving via Cloudflare CDN**
-   - URL pattern: `https://<R2_DOMAIN>/cdn-cgi/image/width=W,format=webp/<key>`
-   - Helper function in `@izimate/shared` to generate optimized image URLs
-4. **Attach uploaded key to domain entities** via API call after upload
-
-### Exit Criteria
-- Upload works from both web and mobile.
-- Images served via CDN with on-the-fly optimization.
-- Image URLs attached to domain entities in DB.
-
----
-
-## Phase 15 — Push Notifications (End-to-End)
-
-**Prerequisites:** Phase 9b (push worker), Phase 12e (mobile push setup)
-**Estimated effort:** 2–3 days
-
-### Deliverables
-
-1. **End-to-end verification**
-   - API action → `queuePush()` → SQS → worker → Expo → device
-   - Verify on both iOS and Android physical devices
-
-2. **Presence-aware delivery**
-   - If user is online (Socket.io connected) → skip push, send realtime only
-   - If user is offline → send push
-   - Presence flag set/cleared by realtime server (Phase 8e)
-
-3. **Deep linking**
-   - Notification tap → open specific screen in mobile app
-   - `data` payload carries navigation info
-
-4. **Receipt checking verification**
-   - Push receipts cron correctly identifies and removes stale tokens
-   - DLQ captures persistent failures
-
-### Exit Criteria
-- Notifications arrive on devices when user is offline.
-- No duplicate notifications (realtime + push) for online users.
-- Deep linking navigates to correct screen on tap.
-- Invalid tokens purged automatically.
-
----
-
-## Phase 16 — Email (End-to-End)
-
-**Prerequisites:** Phase 9a (email worker)
-**Estimated effort:** 2–3 days
-
-### Deliverables
-
-1. **React Email templates**
-   - Welcome / account confirmation
-   - Payment confirmation
-   - Status change notifications
-   - Domain-specific transactional emails
-
-2. **End-to-end verification**
-   - API action → `queueEmail()` → SQS → worker → Resend → inbox
-   - Test with real email addresses
-
-3. **Template preview** (optional)
-   - React Email dev server for previewing templates locally
-
-### Exit Criteria
-- All email templates render correctly.
-- Emails delivered to inbox (not spam).
-- DLQ captures failures.
-
----
-
-## Phase 17 — CI/CD
-
-**Prerequisites:** Phase 1 (repo), Phase 6 (infra)
-**Estimated effort:** 3–5 days
-
-### Deliverables
-
-| Pipeline | Trigger | Steps |
-|----------|---------|-------|
-| **PR checks** | Every PR | Lint → typecheck → unit test (Vitest) → build all packages |
-| **Web preview** | Every PR | Vercel auto-preview deployment |
-| **DB branch** | Every PR | Neon auto-branch (if configured) |
-| **Lambda deploy** | Merge to main | esbuild bundle → `aws lambda update-function-code` (API + workers + crons) |
-| **Fargate deploy** | Merge to main | Docker build → push ECR → ECS force new deployment |
-| **IaC** | Merge to main (infra/ changed) | `pulumi preview` → `pulumi up` (with approval, S3 state backend) |
-| **Mobile build** | Manual / tag | EAS Build → EAS Submit |
-| **E2E web** | Nightly or pre-release | Playwright tests against preview |
-| **E2E mobile** | Nightly or pre-release | Maestro tests against dev build |
-
-### GitHub Actions Workflows
-- `.github/workflows/ci.yml` — lint, typecheck, test on PR
-- `.github/workflows/deploy-api.yml` — deploy Lambda functions on merge
-- `.github/workflows/deploy-realtime.yml` — deploy Fargate on merge
-- `.github/workflows/deploy-infra.yml` — Pulumi up on merge (infra changes)
-- `.github/workflows/e2e.yml` — nightly E2E tests
-
-### Exit Criteria
-- PRs are blocked without passing CI.
-- Merge to main auto-deploys Lambda and Fargate.
-- Infra changes require explicit approval.
-- All pipelines are green.
-
----
-
-## Phase 18 — Monitoring & Observability
-
-**Prerequisites:** Phase 7+ (services deployed)
-**Estimated effort:** 2–3 days
-
-### Deliverables
-
-1. **Sentry integration**
-   - `@sentry/node` in API Lambda, realtime Fargate, workers
-   - `@sentry/react-native` in mobile
-   - `@sentry/nextjs` in web
-   - Source maps uploaded on deploy
-
-2. **CloudWatch alarms**
-   - Lambda errors > threshold → SNS alert
-   - SQS DLQ message count > 0 → SNS alert
-   - Fargate CPU > 80% → auto-scale + alert
-   - API Gateway 5xx rate > threshold → alert
-
-3. **Logging**
-   - Structured JSON logs from Fastify (both Lambda and Fargate)
-   - Lambda logs → CloudWatch Logs
-   - Fargate logs → CloudWatch Logs (via `awslogs` driver)
-   - Log correlation: request ID across API → SQS → worker
-
-4. **Dashboards**
-   - CloudWatch dashboard: Lambda invocations, duration, errors, SQS depth, Fargate CPU/memory
-   - Sentry: error rates, trends, release tracking
-
-### Exit Criteria
-- Errors in any service surface in Sentry within seconds.
-- DLQ alerts fire when messages land in dead-letter queues.
-- CloudWatch dashboard shows health overview.
-- Structured logs are searchable.
-
----
-
-## Phase Summary & Timeline
-
-| Phase | Name | Est. Days | Can Parallelize With |
-|-------|------|-----------|---------------------|
-| 1 | Monorepo Scaffolding | 1–2 | Phase 2 |
-| 2 | External Accounts | 1–2 | Phase 1 |
-| 3 | `@izimate/shared` | 3–5 | — |
-| 4 | `@izimate/db` | 5–7 | Phase 6 (after Phase 3) |
-| 5 | Database Setup | 1–2 | — |
-| 6 | Infrastructure (IaC) | 5–8 | Phase 4 (after Phase 2) |
-| 7 | API Server | 7–10 | Phase 8 (partially) |
-| 8 | Realtime Server | 5–7 | Phase 7 (partially) |
-| 9 | Workers | 3–5 | — |
-| 10 | `@izimate/api-client` | 3–5 | — |
-| 11 | Web App | 10–15 | Phase 12 |
-| 12 | Mobile App | 10–15 | Phase 11 |
-| 13 | Payments | 3–5 | Phase 14 |
-| 14 | Image Uploads | 2–3 | Phase 13 |
-| 15 | Push Notifications E2E | 2–3 | Phase 16 |
-| 16 | Email E2E | 2–3 | Phase 15 |
-| 17 | CI/CD | 3–5 | Phase 18 |
-| 18 | Monitoring | 2–3 | Phase 17 |
-
-### Critical Path (sequential)
-
-```
-Phase 1 → Phase 3 → Phase 4 → Phase 5 → Phase 7 → Phase 10 → Phase 11/12
-                                          Phase 8 ↗
-```
-
-### Optimal Parallelization (2-person team)
-
-| Week | Person A | Person B |
-|------|----------|----------|
-| 1 | Phase 1 (scaffold) + Phase 3 (shared) | Phase 2 (accounts) + Phase 6a–e (Route 53, ACM, VPC, Redis, SQS, SNS) |
-| 2 | Phase 4 (db package) + Phase 5 (migrations) | Phase 6f–i (API GW, Lambda, workers, ALB, Fargate, DNS verification) |
-| 3 | Phase 7a–c (API bootstrap, auth, users) | Phase 8a–b (realtime bootstrap, auth) |
-| 4 | Phase 7d–f (uploads, webhooks, domain routes) | Phase 8c–e (namespaces, events, presence) |
-| 5 | Phase 9 (workers) + Phase 10 (api-client) | Phase 17 (CI/CD) |
-| 6–7 | Phase 11 (web app) | Phase 12 (mobile app) |
-| 8 | Phase 13 (payments) + Phase 14 (uploads E2E) | Phase 15 (push E2E) + Phase 16 (email E2E) |
-| 9 | Phase 18 (monitoring) | Final integration testing + bug fixes |
-
-**Total estimated: ~9–12 weeks** (2-person team) or **~14–18 weeks** (solo)
-
----
-
-## Decisions To Make Before Starting
-
-| # | Decision | Options | Impact |
-|---|----------|---------|--------|
-| ~~1~~ | ~~**IaC tool**~~ | **Resolved: Pulumi (TypeScript)** | Same language as the app; S3 state backend; per-resource modules in `infra/`. |
-| ~~2~~ | ~~**Bundler for Lambda**~~ | **Resolved: esbuild (via Pulumi or custom)** | Pulumi can invoke esbuild as part of the deployment pipeline. |
-| 3 | **State management scope** | Zustand for client-only state vs Zustand for some server-state caching | Affects how much logic lives in hooks vs stores. |
-| 4 | **Domain entities** | Finalize the full list of business entities and their relationships | Drives `@izimate/shared` schemas + `@izimate/db` tables + API routes. |
-| 5 | **React Email vs plain HTML** | React Email (JSX templates) vs simple HTML strings | Affects email template DX and Phase 16 complexity. |
-| 6 | **Search strategy** | Postgres FTS from day 1 vs defer until needed | Affects schema design (tsvector columns + indexes). |
-| 7 | **Mobile auth library** | `expo-auth-session` vs `react-native-auth0` | Both work — `expo-auth-session` is more Expo-native. |
+## After This Plan: Building Features
+
+Once all phases are complete, the platform foundation is ready. Every new domain feature (service listings, bookings, reviews, etc.) follows the **Section 23 contract** from SYSTEM_DESIGN.md:
+
+1. Define Zod schemas in `@izimate/shared`
+2. Add Drizzle table in `@izimate/db`
+3. Add API route in `apps/api`
+4. Add typed client in `@izimate/api-client`
+5. (If realtime) Add Socket.io events in `apps/realtime`
+6. (If async) Use `queueEmail()` / `queuePush()`
+7. (If scheduled) Add EventBridge cron Lambda
+
+No new infrastructure. No new patterns. Just domain logic on top of the foundation.
