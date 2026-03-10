@@ -61,6 +61,12 @@ importers:
         specifier: ^4.19.0
         version: 4.21.0
 
+  apps/workers:
+    devDependencies:
+      "@types/aws-lambda":
+        specifier: ^8.10.161
+        version: 8.10.161
+
   packages/api-client: {}
 
   packages/db: {}
@@ -352,6 +358,10 @@ packages:
   "@socket.io/component-emitter@3.1.2":
     resolution:
       { integrity: sha512-9BCxFwvbGg/RsZK9tjXd8s4UcwR0MWeFQ1XEKIQVVvAGJyINdrqKMcTRyLoK8Rse1GjzLV9cwjWV1olXRWEXVA== }
+
+  "@types/aws-lambda@8.10.161":
+    resolution:
+      { integrity: sha512-rUYdp+MQwSFocxIOcSsYSF3YYYC/uUpMbCY/mbO21vGqfrEYvNSoPyKYDj6RhXXpPfS0KstW9RwG3qXh9sL7FQ== }
 
   "@types/cors@2.8.19":
     resolution:
@@ -1385,6 +1395,8 @@ snapshots:
   "@pinojs/redact@0.4.0": {}
 
   "@socket.io/component-emitter@3.1.2": {}
+
+  "@types/aws-lambda@8.10.161": {}
 
   "@types/cors@2.8.19":
     dependencies:
