@@ -1,0 +1,19 @@
+{
+  "name": "@izimate/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/dev.ts",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "fastify": "^5.3.3",
+    "@fastify/aws-lambda": "^5.1.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0"
+  }
+}
