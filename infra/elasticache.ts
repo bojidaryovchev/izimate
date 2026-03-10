@@ -1,0 +1,2 @@
+// ElastiCache Redis
+export {};
