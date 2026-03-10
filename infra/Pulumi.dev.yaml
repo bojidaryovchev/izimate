@@ -2,3 +2,4 @@ config:
   aws:region: eu-central-1
   aws:profile: izimate
   izimate:domain: izimate.com
+encryptionsalt: v1:qsM9zeE+J6Q=:v1:iryQ3xLeTtGOs7Tx:KOxrptEcAIf/tGwHmvw4fWCnyOi0ng==
