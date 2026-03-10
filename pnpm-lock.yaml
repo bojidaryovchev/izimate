@@ -40,6 +40,12 @@ importers:
       "@fastify/aws-lambda":
         specifier: ^5.1.0
         version: 5.1.4
+      "@izimate/db":
+        specifier: workspace:*
+        version: link:../../packages/db
+      "@izimate/shared":
+        specifier: workspace:*
+        version: link:../../packages/shared
       fastify:
         specifier: ^5.3.3
         version: 5.8.2

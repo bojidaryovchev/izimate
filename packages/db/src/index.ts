@@ -1,1 +1,1 @@
-export {};
+export const DB_PLACEHOLDER = true;
