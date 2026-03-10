@@ -32,6 +32,8 @@ importers:
         specifier: ^8.57.0
         version: 8.57.0(eslint@9.39.4)(typescript@5.8.3)
 
+  packages/api-client: {}
+
   packages/db: {}
 
   packages/shared: {}
