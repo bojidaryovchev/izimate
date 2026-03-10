@@ -1,17 +1,23 @@
 import * as aws from "@pulumi/aws";
+import * as pulumi from "@pulumi/pulumi";
 import { alb } from "./alb";
 import { apiDomainName } from "./api-gateway";
 import { apiDomain, domain, realtimeDomain } from "./config";
 
-// Hosted zone (must already exist — create manually or via registrar)
-export const zone = new aws.route53.Zone("izimate-zone", {
-  name: domain,
-  tags: { Name: "izimate-zone" },
-});
+const config = new pulumi.Config("izimate");
+const existingZoneId = config.get("hostedZoneId");
+
+// If a hosted zone already exists, look it up; otherwise create one
+const zoneId = existingZoneId
+  ? pulumi.output(existingZoneId)
+  : new aws.route53.Zone("izimate-zone", {
+      name: domain,
+      tags: { Name: "izimate-zone" },
+    }).zoneId;
 
 // api.izimate.com → API Gateway
 new aws.route53.Record("izimate-api-dns", {
-  zoneId: zone.zoneId,
+  zoneId: zoneId,
   name: apiDomain,
   type: "A",
   aliases: [
@@ -25,7 +31,7 @@ new aws.route53.Record("izimate-api-dns", {
 
 // realtime.izimate.com → ALB
 new aws.route53.Record("izimate-realtime-dns", {
-  zoneId: zone.zoneId,
+  zoneId: zoneId,
   name: realtimeDomain,
   type: "A",
   aliases: [
