@@ -28,7 +28,7 @@ export default async function ProfilePage() {
         <h1 className="text-2xl font-bold text-red-600">Error</h1>
         <p className="mt-2 text-gray-600">{error ?? "User not found"}</p>
         <Link href="/" className="mt-4 text-blue-600 underline">
-          Back to Home
+          Back to Home cuh
         </Link>
       </main>
     );
