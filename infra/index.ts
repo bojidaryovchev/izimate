@@ -1,4 +1,3 @@
-import * as aws from "@pulumi/aws";
 import * as pulumi from "@pulumi/pulumi";
 
 // Network
@@ -38,14 +37,14 @@ import { vercelProject } from "./vercel";
 import "./alarms";
 
 // SNS → ALB HTTPS subscription (Fargate receives events)
-// Uses custom domain so the TLS cert (realtime.izimate.com) matches the hostname
-import { realtimeDomain } from "./config";
-new aws.sns.TopicSubscription("izimate-events-to-fargate", {
-  topic: eventsTopic.arn,
-  protocol: "https",
-  endpoint: `https://${realtimeDomain}/internal/events`,
-  endpointAutoConfirms: true,
-});
+// Uncomment after Phase 6 when realtime service is deployed and reachable
+// import { realtimeDomain } from "./config";
+// new aws.sns.TopicSubscription("izimate-events-to-fargate", {
+//   topic: eventsTopic.arn,
+//   protocol: "https",
+//   endpoint: `https://${realtimeDomain}/internal/events`,
+//   endpointAutoConfirms: true,
+// });
 
 // --- Stack outputs ---
 export const vpcId = vpc.id;
