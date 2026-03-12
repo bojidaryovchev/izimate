@@ -15,5 +15,9 @@
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@izimate/shared": "workspace:*",
+    "zod": "^4.3.6"
   }
 }

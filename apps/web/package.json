@@ -10,6 +10,8 @@
   },
   "dependencies": {
     "@auth0/nextjs-auth0": "^4.16.0",
+    "@izimate/api-client": "workspace:*",
+    "@izimate/shared": "workspace:*",
     "next": "16.1.6",
     "react": "19.2.3",
     "react-dom": "19.2.3"
