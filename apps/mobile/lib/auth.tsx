@@ -97,11 +97,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
   // Connect/disconnect sockets when auth state changes
   useEffect(() => {
     if (!token) return;
-    configureSocket({
-      url: REALTIME_URL,
-      getToken: async () => (await SecureStore.getItemAsync(TOKEN_KEY)) ?? token,
-    });
-    // Initialize namespace sockets
+    // configureSocket() is called in the render body above so child effects
+    // can safely call getSocket() before this parent effect runs.
     getSocket("/");
     getSocket("/presence");
     getSocket("/notifications");
@@ -111,6 +108,15 @@ export function AuthProvider({ children }: PropsWithChildren) {
       disconnectAll();
     };
   }, [token]);
+
+  // Configure socket synchronously during render so child effects can call getSocket()
+  // (React fires child effects before parent effects)
+  if (token) {
+    configureSocket({
+      url: REALTIME_URL,
+      getToken: async () => (await SecureStore.getItemAsync(TOKEN_KEY)) ?? token,
+    });
+  }
 
   const value = useMemo(() => ({ token, isLoading, login, logout }), [token, isLoading, login, logout]);
 

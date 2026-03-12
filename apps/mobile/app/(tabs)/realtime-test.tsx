@@ -1,9 +1,10 @@
 import { getSocket } from "@izimate/api-client/socket";
 import { useChat, useNotifications, usePresence, useSocket } from "@izimate/api-client/socket/hooks";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { FlatList, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput } from "react-native";
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput } from "react-native";
 
 import { Text, View } from "@/components/Themed";
+import { useAuth } from "@/lib/auth";
 
 const ROOM_ID = "test-room";
 
@@ -85,7 +86,7 @@ function PresencePanel() {
 function ChatPanel() {
   const { messages, typingUsers, sendMessage, startTyping, stopTyping } = useChat(ROOM_ID);
   const [input, setInput] = useState("");
-  const flatListRef = useRef<FlatList>(null);
+  const scrollRef = useRef<ScrollView>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout>>(null);
 
   const handleSend = () => {
@@ -107,24 +108,23 @@ function ChatPanel() {
     <View style={styles.card}>
       <Text style={styles.cardTitle}>Chat (room: {ROOM_ID})</Text>
 
-      <View style={styles.messageList}>
+      <ScrollView
+        ref={scrollRef}
+        style={styles.messageList}
+        onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
+        nestedScrollEnabled
+      >
         {messages.length === 0 ? (
           <Text style={styles.muted}>No messages yet. Send one!</Text>
         ) : (
-          <FlatList
-            ref={flatListRef}
-            data={messages}
-            keyExtractor={(_, i) => String(i)}
-            onContentSizeChange={() => flatListRef.current?.scrollToEnd()}
-            renderItem={({ item }) => (
-              <Text style={styles.messageItem}>
-                <Text style={styles.messageUser}>{String(item.userId).slice(0, 8)}: </Text>
-                {String(item.message)}
-              </Text>
-            )}
-          />
+          messages.map((item, i) => (
+            <Text key={i} style={styles.messageItem}>
+              <Text style={styles.messageUser}>{String(item.userId).slice(0, 8)}: </Text>
+              {String(item.message)}
+            </Text>
+          ))
         )}
-      </View>
+      </ScrollView>
 
       {typingUsers.size > 0 && (
         <Text style={styles.typingText}>{[...typingUsers].map((u) => u.slice(0, 8)).join(", ")} typing...</Text>
@@ -222,6 +222,24 @@ function EventLog() {
 }
 
 export default function RealtimeTestScreen() {
+  const { token, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <View style={styles.centered}>
+        <ActivityIndicator size="large" />
+      </View>
+    );
+  }
+
+  if (!token) {
+    return (
+      <View style={styles.centered}>
+        <Text style={styles.muted}>Log in to use realtime features</Text>
+      </View>
+    );
+  }
+
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -302,4 +320,5 @@ const styles = StyleSheet.create({
   linkText: { color: "#3b82f6", fontSize: 12 },
   logBox: { height: 100, borderRadius: 8, padding: 8 },
   logItem: { fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace", fontSize: 10, opacity: 0.6, marginBottom: 2 },
+  centered: { flex: 1, alignItems: "center", justifyContent: "center" },
 });

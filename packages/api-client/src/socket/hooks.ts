@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Socket } from "socket.io-client";
 import { getSocket } from "./index.js";
 
@@ -23,6 +23,10 @@ export function usePresence() {
   useEffect(() => {
     const socket = getSocket("/presence");
 
+    const handleSync = (data: { userIds: string[] }) => {
+      setOnlineUsers(new Set(data.userIds));
+    };
+
     const handleOnline = (data: PresenceEvent) => {
       setOnlineUsers((prev) => new Set(prev).add(data.userId));
     };
@@ -35,12 +39,21 @@ export function usePresence() {
       });
     };
 
+    socket.on("presence:sync", handleSync);
     socket.on("user:online", handleOnline);
     socket.on("user:offline", handleOffline);
 
+    // Request the current online list now that listeners are attached.
+    // Also re-request on reconnect so the list stays fresh.
+    const requestSync = () => socket.emit("presence:get");
+    if (socket.connected) requestSync();
+    socket.on("connect", requestSync);
+
     return () => {
+      socket.off("presence:sync", handleSync);
       socket.off("user:online", handleOnline);
       socket.off("user:offline", handleOffline);
+      socket.off("connect", requestSync);
     };
   }, []);
 

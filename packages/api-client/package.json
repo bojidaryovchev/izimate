@@ -7,14 +7,17 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
+      "source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
     "./socket": {
+      "source": "./src/socket/index.ts",
       "types": "./dist/socket/index.d.ts",
       "import": "./dist/socket/index.js"
     },
     "./socket/hooks": {
+      "source": "./src/socket/hooks.ts",
       "types": "./dist/socket/hooks.d.ts",
       "import": "./dist/socket/hooks.js"
     }

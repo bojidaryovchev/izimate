@@ -11,13 +11,15 @@ export function registerPresenceNamespace(io: Server, log: FastifyBaseLogger) {
     // Join user's personal presence room
     socket.join(`user:${userId}`);
 
-    // Send the list of currently online users to the newly connected client
-    const sockets = await nsp.fetchSockets();
-    const onlineUserIds = [...new Set(sockets.map((s) => s.data.userId as string))];
-    socket.emit("presence:sync", { userIds: onlineUserIds });
-
     // Broadcast online status to everyone else
     socket.broadcast.emit("user:online", { userId });
+
+    // Client requests the current online list after attaching its listeners
+    socket.on("presence:get", async () => {
+      const sockets = await nsp.fetchSockets();
+      const onlineUserIds = [...new Set(sockets.map((s) => s.data.userId as string))];
+      socket.emit("presence:sync", { userIds: onlineUserIds });
+    });
 
     socket.on("disconnect", async () => {
       log.info(`[/presence] disconnected: ${socket.id} (user: ${userId})`);
