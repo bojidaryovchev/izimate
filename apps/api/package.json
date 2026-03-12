@@ -10,10 +10,11 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@izimate/shared": "workspace:*",
+    "@fastify/aws-lambda": "^5.1.0",
     "@izimate/db": "workspace:*",
+    "@izimate/shared": "workspace:*",
     "fastify": "^5.3.3",
-    "@fastify/aws-lambda": "^5.1.0"
+    "fastify-plugin": "^5.1.0"
   },
   "devDependencies": {
     "tsx": "^4.19.0"
