@@ -12,7 +12,7 @@ new aws.route53.Record("izimate-web-apex-dns", {
   name: domain,
   type: "A",
   ttl: 300,
-  records: ["76.76.21.21"],
+  records: ["216.198.79.1"],
 });
 
 // www.izimate.com → Vercel
@@ -21,7 +21,24 @@ new aws.route53.Record("izimate-web-www-dns", {
   name: `www.${domain}`,
   type: "CNAME",
   ttl: 300,
-  records: ["cname.vercel-dns.com"],
+  records: ["2d39cb846c9ea33c.vercel-dns-017.com"],
+});
+
+// Vercel domain verification TXT records
+new aws.route53.Record("izimate-vercel-verify-apex", {
+  zoneId: zoneId,
+  name: `_vercel.${domain}`,
+  type: "TXT",
+  ttl: 300,
+  records: ["vc-domain-verify=izimate.com,c37d0b1c792d8f542c83"],
+});
+
+new aws.route53.Record("izimate-vercel-verify-www", {
+  zoneId: zoneId,
+  name: `_vercel.www.${domain}`,
+  type: "TXT",
+  ttl: 300,
+  records: ["vc-domain-verify=www.izimate.com,707f43c051e136f2ea79"],
 });
 
 // api.izimate.com → API Gateway
