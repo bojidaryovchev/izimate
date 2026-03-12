@@ -14,7 +14,9 @@ const authPluginFn: FastifyPluginAsync = async (app) => {
   app.addHook("onRequest", async (req, reply) => {
     const header = req.headers.authorization;
     if (!header?.startsWith("Bearer ")) {
-      return reply.code(401).send({ error: "Missing or invalid authorization header" });
+      return reply.code(401).send({
+        error: { code: "MISSING_TOKEN", message: "Missing or invalid authorization header", statusCode: 401 },
+      });
     }
 
     const token = header.slice(7);
@@ -22,7 +24,9 @@ const authPluginFn: FastifyPluginAsync = async (app) => {
       const payload = await verifyToken(token);
       req.userId = payload.sub!;
     } catch {
-      return reply.code(401).send({ error: "Invalid token" });
+      return reply.code(401).send({
+        error: { code: "INVALID_TOKEN", message: "Invalid or expired token", statusCode: 401 },
+      });
     }
   });
 };
