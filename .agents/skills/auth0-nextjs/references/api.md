@@ -12,7 +12,7 @@ Or programmatically:
 
 ```typescript
 const router = useRouter();
-router.push('/auth/login?returnTo=/dashboard');
+router.push("/auth/login?returnTo=/dashboard");
 ```
 
 ---
@@ -20,20 +20,20 @@ router.push('/auth/login?returnTo=/dashboard');
 ### Get Access Token for External APIs
 
 ```typescript
-import { auth0 } from '@/lib/auth0';
-import { NextResponse } from 'next/server';
+import { auth0 } from "@/lib/auth0";
+import { NextResponse } from "next/server";
 
 export async function GET() {
   const { accessToken } = await auth0.getAccessToken();
 
   if (!accessToken) {
-    return new NextResponse('Unauthorized', { status: 401 });
+    return new NextResponse("Unauthorized", { status: 401 });
   }
 
-  const apiResponse = await fetch('https://external-api.com/data', {
+  const apiResponse = await fetch("https://external-api.com/data", {
     headers: {
-      Authorization: `Bearer ${accessToken}`
-    }
+      Authorization: `Bearer ${accessToken}`,
+    },
   });
 
   return NextResponse.json(await apiResponse.json());
@@ -63,7 +63,7 @@ To force re-authentication:
 Create `lib/auth0.ts`:
 
 ```typescript
-import { Auth0Client } from '@auth0/nextjs-auth0/server';
+import { Auth0Client } from "@auth0/nextjs-auth0/server";
 
 export const auth0 = new Auth0Client({
   domain: process.env.AUTH0_DOMAIN!,
@@ -72,14 +72,14 @@ export const auth0 = new Auth0Client({
   secret: process.env.AUTH0_SECRET!,
   appBaseUrl: process.env.APP_BASE_URL!,
   authorizationParameters: {
-    scope: 'openid profile email',
+    scope: "openid profile email",
     audience: process.env.AUTH0_AUDIENCE,
   },
   routes: {
-    login: '/auth/login',
-    callback: '/auth/callback',
-    logout: '/auth/logout',
-    profile: '/auth/profile',
+    login: "/auth/login",
+    callback: "/auth/callback",
+    logout: "/auth/logout",
+    profile: "/auth/profile",
   },
   session: {
     rolling: true,
@@ -107,15 +107,15 @@ export const auth0 = new Auth0Client({
 
 ## Common Issues
 
-| Issue | Solution |
-|-------|----------|
-| "Missing required parameter: redirect_uri" | Ensure `APP_BASE_URL` is set correctly (v4 renamed from `AUTH0_BASE_URL`) |
-| "Invalid state" error | Clear cookies/storage. Verify callback URL in Auth0 dashboard matches `APP_BASE_URL/auth/callback` |
-| User session not persisting | Check `AUTH0_SECRET` is set and at least 32 characters |
-| API routes return 401 | Check session with `auth0.getSession()` in route handler |
-| Middleware loops infinitely | Ensure middleware matcher excludes `/auth/*` routes, not `/api/auth/*` |
-| Import errors for v3 helpers | v4 removed `withApiAuthRequired` and `withPageAuthRequired` - use `auth0.getSession()` |
-| Environment variable not recognized | v4 uses `AUTH0_DOMAIN` (no scheme) and `APP_BASE_URL`, not `AUTH0_ISSUER_BASE_URL` or `AUTH0_BASE_URL` |
+| Issue                                      | Solution                                                                                               |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| "Missing required parameter: redirect_uri" | Ensure `APP_BASE_URL` is set correctly (v4 renamed from `AUTH0_BASE_URL`)                              |
+| "Invalid state" error                      | Clear cookies/storage. Verify callback URL in Auth0 dashboard matches `APP_BASE_URL/auth/callback`     |
+| User session not persisting                | Check `AUTH0_SECRET` is set and at least 32 characters                                                 |
+| API routes return 401                      | Check session with `auth0.getSession()` in route handler                                               |
+| Middleware loops infinitely                | Ensure middleware matcher excludes `/auth/*` routes, not `/api/auth/*`                                 |
+| Import errors for v3 helpers               | v4 removed `withApiAuthRequired` and `withPageAuthRequired` - use `auth0.getSession()`                 |
+| Environment variable not recognized        | v4 uses `AUTH0_DOMAIN` (no scheme) and `APP_BASE_URL`, not `AUTH0_ISSUER_BASE_URL` or `AUTH0_BASE_URL` |
 
 ---
 

@@ -34,16 +34,14 @@ export default function EditProfileModal() {
       <View style={styles.separator} lightColor="#eee" darkColor="rgba(255,255,255,0.1)" />
 
       <Text style={styles.label}>Name</Text>
-      <TextInput
-        style={styles.input}
-        value={name}
-        onChangeText={setName}
-        placeholder="Your name"
-        autoFocus
-      />
+      <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Your name" autoFocus />
 
       <View style={styles.buttonWrap}>
-        <Button title={updateUser.isPending ? "Saving..." : "Save"} onPress={handleSave} disabled={updateUser.isPending} />
+        <Button
+          title={updateUser.isPending ? "Saving..." : "Save"}
+          onPress={handleSave}
+          disabled={updateUser.isPending}
+        />
       </View>
 
       <StatusBar style={Platform.OS === "ios" ? "light" : "auto"} />

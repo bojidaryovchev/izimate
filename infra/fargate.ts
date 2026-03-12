@@ -1,6 +1,7 @@
 import * as aws from "@pulumi/aws";
 import * as pulumi from "@pulumi/pulumi";
 import { fargateTargetGroup } from "./alb";
+import { auth0Audience, auth0Domain } from "./config";
 import { redisHost, redisPort } from "./elasticache";
 import { emailQueue, pushQueue } from "./sqs";
 import { fargateSg, publicSubnetA, publicSubnetB } from "./vpc";
@@ -102,6 +103,8 @@ const taskDefinition = new aws.ecs.TaskDefinition("izimate-realtime-task", {
             { name: "NODE_ENV", value: "production" },
             { name: "PORT", value: "3001" },
             { name: "REDIS_URL", value: `redis://${rHost}:${rPort}` },
+            { name: "AUTH0_DOMAIN", value: auth0Domain },
+            { name: "AUTH0_AUDIENCE", value: auth0Audience },
           ],
           logConfiguration: {
             logDriver: "awslogs",
@@ -121,7 +124,7 @@ const taskDefinition = new aws.ecs.TaskDefinition("izimate-realtime-task", {
 export const service = new aws.ecs.Service("izimate-realtime-service", {
   cluster: cluster.arn,
   taskDefinition: taskDefinition.arn,
-  desiredCount: 0, // no image in ECR yet — scale up after first docker push
+  desiredCount: 1, // scale up after docker push to ECR
   launchType: "FARGATE",
   networkConfiguration: {
     subnets: [publicSubnetA.id, publicSubnetB.id],

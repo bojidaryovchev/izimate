@@ -7,7 +7,9 @@ export const webhookRoutes: FastifyPluginAsync = async (app) => {
     handler: async (req, reply) => {
       const signature = req.headers["stripe-signature"];
       if (!signature) {
-        return reply.code(400).send({ error: { code: "MISSING_SIGNATURE", message: "Missing Stripe signature header", statusCode: 400 } });
+        return reply
+          .code(400)
+          .send({ error: { code: "MISSING_SIGNATURE", message: "Missing Stripe signature header", statusCode: 400 } });
       }
 
       // TODO: Verify signature with Stripe SDK and process events

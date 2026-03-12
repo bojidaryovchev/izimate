@@ -1,8 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useEffect, useTransition } from "react";
-import { updateProfile, getProfile } from "../actions";
+import { useEffect, useState, useTransition } from "react";
+import { getProfile, updateProfile } from "../actions";
 
 export default function EditProfilePage() {
   const router = useRouter();
@@ -70,10 +70,7 @@ export default function EditProfilePage() {
           >
             {isPending ? "Saving..." : "Save"}
           </button>
-          <button
-            onClick={() => router.back()}
-            className="flex-1 rounded border px-4 py-2 hover:bg-gray-50"
-          >
+          <button onClick={() => router.back()} className="flex-1 rounded border px-4 py-2 hover:bg-gray-50">
             Cancel
           </button>
         </div>

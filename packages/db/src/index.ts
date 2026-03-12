@@ -5,6 +5,6 @@ import * as schema from "./schema/users.js";
 
 export const getDb = (url: string) => drizzle(neon(url), { schema });
 
-export { schema };
+export { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, ne, or, sql } from "drizzle-orm";
 export { users } from "./schema/users.js";
-export { eq, and, or, desc, asc, sql, lte, gte, ne, isNull, isNotNull, inArray } from "drizzle-orm";
+export { schema };

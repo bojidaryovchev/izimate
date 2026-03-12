@@ -9,6 +9,14 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./socket": {
+      "types": "./dist/socket/index.d.ts",
+      "import": "./dist/socket/index.js"
+    },
+    "./socket/hooks": {
+      "types": "./dist/socket/hooks.d.ts",
+      "import": "./dist/socket/hooks.js"
     }
   },
   "scripts": {
@@ -18,6 +26,18 @@
   },
   "dependencies": {
     "@izimate/shared": "workspace:*",
+    "socket.io-client": "^4.8.3",
     "zod": "^4.3.6"
+  },
+  "peerDependencies": {
+    "react": ">=18"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.14"
   }
 }

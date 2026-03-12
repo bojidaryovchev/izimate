@@ -57,7 +57,7 @@ Generate secret: `openssl rand -hex 32`
 Create `lib/auth0.ts`:
 
 ```typescript
-import { Auth0Client } from '@auth0/nextjs-auth0/server';
+import { Auth0Client } from "@auth0/nextjs-auth0/server";
 
 export const auth0 = new Auth0Client({
   domain: process.env.AUTH0_DOMAIN!,
@@ -73,17 +73,15 @@ export const auth0 = new Auth0Client({
 **Next.js 15** - Create `middleware.ts` at project root:
 
 ```typescript
-import { NextRequest } from 'next/server';
-import { auth0 } from './lib/auth0';
+import { NextRequest } from "next/server";
+import { auth0 } from "./lib/auth0";
 
 export async function middleware(request: NextRequest) {
   return await auth0.middleware(request);
 }
 
 export const config = {
-  matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt).*)',
-  ],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt).*)"],
 };
 ```
 
@@ -92,38 +90,35 @@ export const config = {
 **Option 1:** Use `middleware.ts` (same as Next.js 15):
 
 ```typescript
-import { NextRequest } from 'next/server';
-import { auth0 } from './lib/auth0';
+import { NextRequest } from "next/server";
+import { auth0 } from "./lib/auth0";
 
 export async function middleware(request: NextRequest) {
   return await auth0.middleware(request);
 }
 
 export const config = {
-  matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt).*)',
-  ],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt).*)"],
 };
 ```
 
 **Option 2:** Use `proxy.ts` at project root:
 
 ```typescript
-import { NextRequest } from 'next/server';
-import { auth0 } from './lib/auth0';
+import { NextRequest } from "next/server";
+import { auth0 } from "./lib/auth0";
 
 export async function proxy(request: NextRequest) {
   return await auth0.middleware(request);
 }
 
 export const config = {
-  matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt).*)',
-  ],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt).*)"],
 };
 ```
 
 This automatically creates endpoints:
+
 - `/auth/login` - Login
 - `/auth/logout` - Logout
 - `/auth/callback` - OAuth callback
@@ -217,18 +212,18 @@ Visit `http://localhost:3000` and test the login flow.
 
 ## Common Mistakes
 
-| Mistake | Fix |
-|---------|-----|
-| Using v3 environment variables | v4 uses `APP_BASE_URL` and `AUTH0_DOMAIN` (not `AUTH0_BASE_URL` or `AUTH0_ISSUER_BASE_URL`) |
-| Forgot to add callback URL in Auth0 Dashboard | Add `/auth/callback` to Allowed Callback URLs (e.g., `http://localhost:3000/auth/callback`) |
-| Missing middleware configuration | v4 requires middleware to mount auth routes - create `middleware.ts` (Next.js 15+16) or `proxy.ts` (Next.js 16 only) with `auth0.middleware()` |
-| Wrong route paths | v4 uses `/auth/login` not `/api/auth/login` - routes drop the `/api` prefix |
-| Missing or weak AUTH0_SECRET | Generate secure secret with `openssl rand -hex 32` and store in .env.local |
-| Using .env instead of .env.local | Next.js requires .env.local for local secrets, and .env.local should be in .gitignore |
-| App created as SPA type in Auth0 | Must be Regular Web Application type for Next.js |
-| Using removed v3 helpers | v4 removed `withPageAuthRequired` and `withApiAuthRequired` - use `getSession()` instead |
-| Using useUser in Server Component | useUser is client-only, use `auth0.getSession()` for Server Components |
-| AUTH0_DOMAIN includes https:// | v4 `AUTH0_DOMAIN` should be just the domain (e.g., `example.auth0.com`), no scheme |
+| Mistake                                       | Fix                                                                                                                                            |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Using v3 environment variables                | v4 uses `APP_BASE_URL` and `AUTH0_DOMAIN` (not `AUTH0_BASE_URL` or `AUTH0_ISSUER_BASE_URL`)                                                    |
+| Forgot to add callback URL in Auth0 Dashboard | Add `/auth/callback` to Allowed Callback URLs (e.g., `http://localhost:3000/auth/callback`)                                                    |
+| Missing middleware configuration              | v4 requires middleware to mount auth routes - create `middleware.ts` (Next.js 15+16) or `proxy.ts` (Next.js 16 only) with `auth0.middleware()` |
+| Wrong route paths                             | v4 uses `/auth/login` not `/api/auth/login` - routes drop the `/api` prefix                                                                    |
+| Missing or weak AUTH0_SECRET                  | Generate secure secret with `openssl rand -hex 32` and store in .env.local                                                                     |
+| Using .env instead of .env.local              | Next.js requires .env.local for local secrets, and .env.local should be in .gitignore                                                          |
+| App created as SPA type in Auth0              | Must be Regular Web Application type for Next.js                                                                                               |
+| Using removed v3 helpers                      | v4 removed `withPageAuthRequired` and `withApiAuthRequired` - use `getSession()` instead                                                       |
+| Using useUser in Server Component             | useUser is client-only, use `auth0.getSession()` for Server Components                                                                         |
+| AUTH0_DOMAIN includes https://                | v4 `AUTH0_DOMAIN` should be just the domain (e.g., `example.auth0.com`), no scheme                                                             |
 
 ---
 
@@ -243,6 +238,7 @@ Visit `http://localhost:3000` and test the login flow.
 ## Quick Reference
 
 **V4 Setup:**
+
 - Create `lib/auth0.ts` with `Auth0Client` instance
 - Create middleware configuration (required):
   - Next.js 15: `middleware.ts` with `middleware()` function
@@ -250,15 +246,18 @@ Visit `http://localhost:3000` and test the login flow.
 - Optional: Wrap with `<Auth0Provider>` for SSR user
 
 **Client-Side Hooks:**
+
 - `useUser()` - Get user in client components
 - `user` - User profile object
 - `isLoading` - Loading state
 
 **Server-Side Methods:**
+
 - `auth0.getSession()` - Get session in Server Components/API routes/middleware
 - `auth0.getAccessToken()` - Get access token for calling APIs
 
 **Common Use Cases:**
+
 - Login/Logout links → Use `/auth/login` and `/auth/logout` paths (see Step 5)
 - Protected pages (App Router) → [Integration Guide](references/integration.md#protected-pages-app-router)
 - Protected pages (Pages Router) → [Integration Guide](references/integration.md#protected-pages-pages-router)

@@ -11,12 +11,7 @@ export async function queueEmail(to: string, template: string, data: Record<stri
   );
 }
 
-export async function queuePush(
-  userId: string,
-  title: string,
-  body: string,
-  data?: Record<string, unknown>,
-) {
+export async function queuePush(userId: string, title: string, body: string, data?: Record<string, unknown>) {
   await sqs.send(
     new SendMessageCommand({
       QueueUrl: process.env.PUSH_QUEUE_URL,

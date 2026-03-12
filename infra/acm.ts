@@ -1,5 +1,4 @@
 import * as aws from "@pulumi/aws";
-import * as pulumi from "@pulumi/pulumi";
 import { apiDomain, domain, realtimeDomain } from "./config";
 import { zoneId } from "./zone";
 
@@ -26,10 +25,7 @@ export const wildcardCert = new aws.acm.Certificate("izimate-wildcard-cert", {
 
 // --- DNS validation records ---
 
-function createValidationRecords(
-  name: string,
-  cert: aws.acm.Certificate,
-): aws.route53.Record {
+function createValidationRecords(name: string, cert: aws.acm.Certificate): aws.route53.Record {
   return new aws.route53.Record(`${name}-validation`, {
     zoneId: zoneId,
     name: cert.domainValidationOptions[0].resourceRecordName,
@@ -46,26 +42,17 @@ const wildcardValidationRecord = createValidationRecords("izimate-wildcard-cert"
 
 // --- Wait for certificates to be validated ---
 
-export const apiCertValidation = new aws.acm.CertificateValidation(
-  "izimate-api-cert-validation",
-  {
-    certificateArn: apiCert.arn,
-    validationRecordFqdns: [apiValidationRecord.fqdn],
-  },
-);
+export const apiCertValidation = new aws.acm.CertificateValidation("izimate-api-cert-validation", {
+  certificateArn: apiCert.arn,
+  validationRecordFqdns: [apiValidationRecord.fqdn],
+});
 
-export const realtimeCertValidation = new aws.acm.CertificateValidation(
-  "izimate-realtime-cert-validation",
-  {
-    certificateArn: realtimeCert.arn,
-    validationRecordFqdns: [realtimeValidationRecord.fqdn],
-  },
-);
+export const realtimeCertValidation = new aws.acm.CertificateValidation("izimate-realtime-cert-validation", {
+  certificateArn: realtimeCert.arn,
+  validationRecordFqdns: [realtimeValidationRecord.fqdn],
+});
 
-export const wildcardCertValidation = new aws.acm.CertificateValidation(
-  "izimate-wildcard-cert-validation",
-  {
-    certificateArn: wildcardCert.arn,
-    validationRecordFqdns: [wildcardValidationRecord.fqdn],
-  },
-);
+export const wildcardCertValidation = new aws.acm.CertificateValidation("izimate-wildcard-cert-validation", {
+  certificateArn: wildcardCert.arn,
+  validationRecordFqdns: [wildcardValidationRecord.fqdn],
+});

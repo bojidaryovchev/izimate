@@ -68,17 +68,17 @@ export const getServerSideProps: GetServerSideProps = async ({ req, res }) => {
 
 ```typescript
 // app/api/private/route.ts
-import { auth0 } from '@/lib/auth0';
-import { NextResponse } from 'next/server';
+import { auth0 } from "@/lib/auth0";
+import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
   const session = await auth0.getSession();
 
   if (!session) {
-    return new NextResponse('Unauthorized', { status: 401 });
+    return new NextResponse("Unauthorized", { status: 401 });
   }
 
-  return NextResponse.json({ data: 'Protected data', user: session.user });
+  return NextResponse.json({ data: "Protected data", user: session.user });
 }
 ```
 
@@ -86,14 +86,14 @@ export async function GET(request: Request) {
 
 ```typescript
 // pages/api/private.ts
-import { auth0 } from '@/lib/auth0';
-import { NextApiRequest, NextApiResponse } from 'next';
+import { auth0 } from "@/lib/auth0";
+import { NextApiRequest, NextApiResponse } from "next";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const session = await auth0.getSession(req, res);
 
   if (!session) {
-    return res.status(401).json({ error: 'Unauthorized' });
+    return res.status(401).json({ error: "Unauthorized" });
   }
 
   res.json({ user: session.user });
@@ -110,19 +110,19 @@ Protect multiple routes with middleware.
 
 ```typescript
 // middleware.ts
-import { NextRequest, NextResponse } from 'next/server';
-import { auth0 } from './lib/auth0';
+import { NextRequest, NextResponse } from "next/server";
+import { auth0 } from "./lib/auth0";
 
 export async function middleware(request: NextRequest) {
   const authRes = await auth0.middleware(request);
 
   // Allow auth routes to be handled by SDK
-  if (request.nextUrl.pathname.startsWith('/auth')) {
+  if (request.nextUrl.pathname.startsWith("/auth")) {
     return authRes;
   }
 
   // Public routes
-  if (request.nextUrl.pathname === '/') {
+  if (request.nextUrl.pathname === "/") {
     return authRes;
   }
 
@@ -138,9 +138,7 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt).*)',
-  ],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt).*)"],
 };
 ```
 
@@ -148,19 +146,19 @@ export const config = {
 
 ```typescript
 // proxy.ts
-import { NextRequest, NextResponse } from 'next/server';
-import { auth0 } from './lib/auth0';
+import { NextRequest, NextResponse } from "next/server";
+import { auth0 } from "./lib/auth0";
 
 export async function proxy(request: NextRequest) {
   const authRes = await auth0.middleware(request);
 
   // Allow auth routes to be handled by SDK
-  if (request.nextUrl.pathname.startsWith('/auth')) {
+  if (request.nextUrl.pathname.startsWith("/auth")) {
     return authRes;
   }
 
   // Public routes
-  if (request.nextUrl.pathname === '/') {
+  if (request.nextUrl.pathname === "/") {
     return authRes;
   }
 
@@ -176,9 +174,7 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt).*)',
-  ],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt).*)"],
 };
 ```
 
@@ -190,19 +186,19 @@ export const config = {
 
 ```typescript
 // app/actions.ts
-'use server';
+"use server";
 
-import { auth0 } from '@/lib/auth0';
+import { auth0 } from "@/lib/auth0";
 
 export async function getData() {
   const { accessToken } = await auth0.getAccessToken();
 
   if (!accessToken) {
-    throw new Error('No access token available');
+    throw new Error("No access token available");
   }
 
-  const response = await fetch('https://your-api.com/data', {
-    headers: { Authorization: `Bearer ${accessToken}` }
+  const response = await fetch("https://your-api.com/data", {
+    headers: { Authorization: `Bearer ${accessToken}` },
   });
 
   return response.json();
@@ -213,24 +209,24 @@ export async function getData() {
 
 ```typescript
 // pages/api/data.ts
-import { auth0 } from '@/lib/auth0';
-import { NextApiRequest, NextApiResponse } from 'next';
+import { auth0 } from "@/lib/auth0";
+import { NextApiRequest, NextApiResponse } from "next";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const session = await auth0.getSession(req, res);
 
   if (!session) {
-    return res.status(401).json({ error: 'Unauthorized' });
+    return res.status(401).json({ error: "Unauthorized" });
   }
 
   const { accessToken } = await auth0.getAccessToken(req, res);
 
   if (!accessToken) {
-    return res.status(401).json({ error: 'No access token' });
+    return res.status(401).json({ error: "No access token" });
   }
 
-  const response = await fetch('https://your-api.com/data', {
-    headers: { Authorization: `Bearer ${accessToken}` }
+  const response = await fetch("https://your-api.com/data", {
+    headers: { Authorization: `Bearer ${accessToken}` },
   });
 
   const data = await response.json();
@@ -242,13 +238,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
 ## Common Issues
 
-| Issue | Solution |
-|-------|----------|
-| "Invalid state" error | Regenerate `AUTH0_SECRET`, clear cookies |
-| Client secret required | Next.js uses Regular Web Application type |
-| Callback URL mismatch | Add `/auth/callback` to Allowed Callback URLs (v4 dropped `/api` prefix) |
-| Middleware not protecting routes | Ensure middleware calls `auth0.middleware()` and check `matcher` config |
-| Routes return 404 | v4 uses `/auth/*` paths, not `/api/auth/*` - update all auth links |
+| Issue                            | Solution                                                                 |
+| -------------------------------- | ------------------------------------------------------------------------ |
+| "Invalid state" error            | Regenerate `AUTH0_SECRET`, clear cookies                                 |
+| Client secret required           | Next.js uses Regular Web Application type                                |
+| Callback URL mismatch            | Add `/auth/callback` to Allowed Callback URLs (v4 dropped `/api` prefix) |
+| Middleware not protecting routes | Ensure middleware calls `auth0.middleware()` and check `matcher` config  |
+| Routes return 404                | v4 uses `/auth/*` paths, not `/api/auth/*` - update all auth links       |
 
 ---
 

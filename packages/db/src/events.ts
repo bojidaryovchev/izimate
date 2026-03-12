@@ -1,4 +1,4 @@
-import { SNSClient, PublishCommand } from "@aws-sdk/client-sns";
+import { PublishCommand, SNSClient } from "@aws-sdk/client-sns";
 import type { AppEvent } from "@izimate/shared";
 
 const sns = new SNSClient({});

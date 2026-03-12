@@ -1,3 +1,4 @@
+import { configureSocket, connectAll, disconnectAll, getSocket } from "@izimate/api-client";
 import {
   exchangeCodeAsync,
   makeRedirectUri,
@@ -11,6 +12,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 const AUTH0_DOMAIN = process.env.EXPO_PUBLIC_AUTH0_DOMAIN!;
 const AUTH0_CLIENT_ID = process.env.EXPO_PUBLIC_AUTH0_CLIENT_ID!;
 const AUTH0_AUDIENCE = process.env.EXPO_PUBLIC_AUTH0_AUDIENCE!;
+const REALTIME_URL = process.env.EXPO_PUBLIC_REALTIME_URL!;
 
 const TOKEN_KEY = "auth_token";
 const REFRESH_KEY = "auth_refresh";
@@ -86,10 +88,29 @@ export function AuthProvider({ children }: PropsWithChildren) {
   }, [promptAsync]);
 
   const logout = useCallback(async () => {
+    disconnectAll();
     setToken(null);
     await SecureStore.deleteItemAsync(TOKEN_KEY);
     await SecureStore.deleteItemAsync(REFRESH_KEY);
   }, []);
+
+  // Connect/disconnect sockets when auth state changes
+  useEffect(() => {
+    if (!token) return;
+    configureSocket({
+      url: REALTIME_URL,
+      getToken: async () => (await SecureStore.getItemAsync(TOKEN_KEY)) ?? token,
+    });
+    // Initialize namespace sockets
+    getSocket("/");
+    getSocket("/presence");
+    getSocket("/notifications");
+    getSocket("/chat");
+    connectAll();
+    return () => {
+      disconnectAll();
+    };
+  }, [token]);
 
   const value = useMemo(() => ({ token, isLoading, login, logout }), [token, isLoading, login, logout]);
 

@@ -95,6 +95,7 @@ echo "✅ Auth0 credentials written to $TARGET_FILE"
 ```
 
 After the script runs, remind the user to:
+
 1. Open the env file that was written and replace `YOUR_CLIENT_SECRET` with the actual client secret from Auth0.
 2. Ensure the env file is listed in `.gitignore` to avoid accidentally committing secrets.
 
@@ -119,6 +120,7 @@ AUTH0_CLIENT_SECRET=your-client-secret
 ```
 
 Generate `AUTH0_SECRET`:
+
 ```bash
 openssl rand -hex 32
 ```
@@ -126,6 +128,7 @@ openssl rand -hex 32
 ### Step 3: Configure Auth0 Application
 
 Via CLI:
+
 ```bash
 auth0 login
 auth0 apps create --name "My Next.js App" --type regular \
@@ -134,6 +137,7 @@ auth0 apps create --name "My Next.js App" --type regular \
 ```
 
 Via Dashboard:
+
 1. Create **Regular Web Application**
 2. Configure:
    - Allowed Callback URLs: `http://localhost:3000/api/auth/callback`
@@ -145,14 +149,17 @@ Via Dashboard:
 ## Troubleshooting
 
 **"Invalid state" error:**
+
 - Regenerate `AUTH0_SECRET`
 - Clear cookies and restart dev server
 
 **Client secret not working:**
+
 - Next.js uses Regular Web Application (not SPA)
 - Verify client secret copied correctly
 
 **Callback URL mismatch:**
+
 - Ensure `/api/auth/callback` is in Allowed Callback URLs
 - Check `AUTH0_BASE_URL` matches your domain
 

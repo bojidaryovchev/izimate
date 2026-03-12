@@ -84,6 +84,23 @@ export default function TabLayout() {
           ),
         }}
       />
+      <Tabs.Screen
+        name="realtime-test"
+        options={{
+          title: "Realtime",
+          tabBarIcon: ({ color }) => (
+            <SymbolView
+              name={{
+                ios: "antenna.radiowaves.left.and.right",
+                android: "wifi",
+                web: "wifi",
+              }}
+              tintColor={color}
+              size={28}
+            />
+          ),
+        }}
+      />
     </Tabs>
   );
 }

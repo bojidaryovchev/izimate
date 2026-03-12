@@ -38,9 +38,7 @@ export default function ProfileScreen() {
 
   return (
     <View style={styles.container}>
-      {user.avatarUrl && (
-        <Image source={{ uri: user.avatarUrl }} style={styles.avatar} />
-      )}
+      {user.avatarUrl && <Image source={{ uri: user.avatarUrl }} style={styles.avatar} />}
       <Text style={styles.title}>{user.name}</Text>
       <Text style={styles.email}>{user.email}</Text>
 

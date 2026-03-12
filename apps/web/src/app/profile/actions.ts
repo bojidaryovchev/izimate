@@ -14,9 +14,7 @@ export async function getProfile(): Promise<{ user?: User; error?: string }> {
   }
 }
 
-export async function updateProfile(
-  data: UpdateUser,
-): Promise<{ user?: User; error?: string }> {
+export async function updateProfile(data: UpdateUser): Promise<{ user?: User; error?: string }> {
   try {
     const res = await apiFetch("/api/users/me", {
       method: "PATCH",

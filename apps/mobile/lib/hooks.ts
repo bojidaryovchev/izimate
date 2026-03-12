@@ -1,9 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { UpdateUser } from "@izimate/shared";
-import { usersApi } from "./client";
-import { useAuth } from "./auth";
 import { useUserStore } from "@/stores/user";
+import type { UpdateUser } from "@izimate/shared";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
+import { useAuth } from "./auth";
+import { usersApi } from "./client";
 
 export function useUser() {
   const { token } = useAuth();

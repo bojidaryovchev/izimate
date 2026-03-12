@@ -3,9 +3,10 @@ import { z } from "zod";
 export const UserSchema = z.object({
   id: z.string().uuid(),
   auth0Id: z.string(),
-  email: z.string().email(),
+  email: z.email(),
   name: z.string(),
   avatarUrl: z.string().nullable(),
+  isOnline: z.boolean(),
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date(),
 });

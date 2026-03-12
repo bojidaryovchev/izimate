@@ -1,6 +1,6 @@
 import * as pulumi from "@pulumi/pulumi";
 import * as vercel from "@pulumiverse/vercel";
-import { apiDomain, domain } from "./config";
+import { apiDomain, domain, realtimeDomain } from "./config";
 
 const config = new pulumi.Config("izimate");
 
@@ -9,7 +9,8 @@ export const vercelProject = new vercel.Project("izimate-web", {
   name: "izimate-web",
   framework: "nextjs",
   rootDirectory: "apps/web",
-  buildCommand: "cd ../.. && pnpm --filter @izimate/shared build && pnpm --filter @izimate/api-client build && pnpm --filter @izimate/web build",
+  buildCommand:
+    "cd ../.. && pnpm --filter @izimate/shared build && pnpm --filter @izimate/api-client build && pnpm --filter @izimate/web build",
   installCommand: "pnpm install",
   gitRepository: {
     type: "github",
@@ -23,6 +24,7 @@ export const vercelProject = new vercel.Project("izimate-web", {
 
 const envVars: Record<string, { value: pulumi.Input<string>; sensitive?: boolean }> = {
   NEXT_PUBLIC_API_URL: { value: `https://${apiDomain}` },
+  NEXT_PUBLIC_REALTIME_URL: { value: `https://${realtimeDomain}` },
   APP_BASE_URL: { value: `https://${domain}` },
   AUTH0_DOMAIN: { value: config.require("auth0Domain") },
   AUTH0_CLIENT_ID: { value: config.require("auth0WebClientId") },
