@@ -35,6 +35,7 @@ export function SocketProvider({ children }: PropsWithChildren) {
         getSocket("/notifications");
         getSocket("/chat");
         connectAll();
+        // Signal ready immediately — hooks handle their own connect timing
         setReady(true);
       })
       .catch(() => {

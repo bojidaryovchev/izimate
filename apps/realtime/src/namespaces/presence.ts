@@ -18,6 +18,7 @@ export function registerPresenceNamespace(io: Server, log: FastifyBaseLogger) {
     socket.on("presence:get", async () => {
       const sockets = await nsp.fetchSockets();
       const onlineUserIds = [...new Set(sockets.map((s) => s.data.userId as string))];
+      log.info(`[/presence] presence:get from ${socket.id} — online: [${onlineUserIds.join(", ")}]`);
       socket.emit("presence:sync", { userIds: onlineUserIds });
     });
 

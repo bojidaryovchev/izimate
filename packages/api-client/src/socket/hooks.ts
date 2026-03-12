@@ -44,10 +44,10 @@ export function usePresence() {
     socket.on("user:offline", handleOffline);
 
     // Request the current online list now that listeners are attached.
-    // Also re-request on reconnect so the list stays fresh.
+    // Must handle both cases: socket already connected, or not yet connected.
     const requestSync = () => socket.emit("presence:get");
-    if (socket.connected) requestSync();
     socket.on("connect", requestSync);
+    if (socket.connected) requestSync();
 
     return () => {
       socket.off("presence:sync", handleSync);
@@ -123,7 +123,6 @@ export function useChat(roomId: string) {
   useEffect(() => {
     const socket = getSocket("/chat");
     socketRef.current = socket;
-    socket.emit("room:join", roomId);
 
     const handleMessage = (data: ChatMessage) => {
       if (data.roomId === roomId) {
@@ -156,11 +155,17 @@ export function useChat(roomId: string) {
     socket.on("typing:stop", handleTypingStop);
     socket.on("message:read", handleRead);
 
+    // Join room after listeners attached to avoid missing events
+    const joinRoom = () => socket.emit("room:join", roomId);
+    socket.on("connect", joinRoom);
+    if (socket.connected) joinRoom();
+
     return () => {
       socket.off("message:send", handleMessage);
       socket.off("typing:start", handleTypingStart);
       socket.off("typing:stop", handleTypingStop);
       socket.off("message:read", handleRead);
+      socket.off("connect", joinRoom);
       socket.emit("room:leave", roomId);
     };
   }, [roomId]);
