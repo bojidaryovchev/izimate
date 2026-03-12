@@ -33,7 +33,7 @@ export function useAuth() {
   return useContext(AuthContext);
 }
 
-const redirectUri = makeRedirectUri({ scheme: "mobile" });
+const redirectUri = makeRedirectUri({ scheme: "izimate", path: "auth/callback" });
 
 export function AuthProvider({ children }: PropsWithChildren) {
   const [token, setToken] = useState<string | null>(null);
