@@ -121,7 +121,7 @@ const taskDefinition = new aws.ecs.TaskDefinition("izimate-realtime-task", {
 export const service = new aws.ecs.Service("izimate-realtime-service", {
   cluster: cluster.arn,
   taskDefinition: taskDefinition.arn,
-  desiredCount: 1,
+  desiredCount: 0, // no image in ECR yet — scale up after first docker push
   launchType: "FARGATE",
   networkConfiguration: {
     subnets: [publicSubnetA.id, publicSubnetB.id],

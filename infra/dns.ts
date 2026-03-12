@@ -1,19 +1,10 @@
 import * as aws from "@pulumi/aws";
-import * as pulumi from "@pulumi/pulumi";
 import { alb } from "./alb";
 import { apiDomainName } from "./api-gateway";
 import { apiDomain, domain, realtimeDomain } from "./config";
+import { zoneId } from "./zone";
 
-const config = new pulumi.Config("izimate");
-const existingZoneId = config.get("hostedZoneId");
-
-// If a hosted zone already exists, look it up; otherwise create one
-export const zoneId = existingZoneId
-  ? pulumi.output(existingZoneId)
-  : new aws.route53.Zone("izimate-zone", {
-      name: domain,
-      tags: { Name: "izimate-zone" },
-    }).zoneId;
+export { zoneId };
 
 // izimate.com → Vercel (apex domain)
 new aws.route53.Record("izimate-web-apex-dns", {

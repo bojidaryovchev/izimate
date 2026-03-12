@@ -1,12 +1,12 @@
 import * as aws from "@pulumi/aws";
-import { apiCert } from "./acm";
+import { apiCertValidation } from "./acm";
 import { apiDomain, domain } from "./config";
 
 // HTTP API (v2) — cheaper than REST API
 export const httpApi = new aws.apigatewayv2.Api("izimate-api", {
   protocolType: "HTTP",
   corsConfiguration: {
-    allowOrigins: [`https://${domain}`, "http://localhost:*"],
+    allowOrigins: [`https://${domain}`, "http://localhost:3000", "http://localhost:8081"],
     allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowHeaders: ["Content-Type", "Authorization"],
     maxAge: 86400,
@@ -26,11 +26,11 @@ export const apiStage = new aws.apigatewayv2.Stage("izimate-api-default", {
   tags: { Name: "izimate-api-default" },
 });
 
-// Custom domain
+// Custom domain — waits for cert validation before creating
 export const apiDomainName = new aws.apigatewayv2.DomainName("izimate-api-domain", {
   domainName: apiDomain,
   domainNameConfiguration: {
-    certificateArn: apiCert.arn,
+    certificateArn: apiCertValidation.certificateArn,
     endpointType: "REGIONAL",
     securityPolicy: "TLS_1_2",
   },

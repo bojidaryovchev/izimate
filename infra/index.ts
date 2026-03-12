@@ -38,10 +38,12 @@ import { vercelProject } from "./vercel";
 import "./alarms";
 
 // SNS → ALB HTTPS subscription (Fargate receives events)
+// Uses custom domain so the TLS cert (realtime.izimate.com) matches the hostname
+import { realtimeDomain } from "./config";
 new aws.sns.TopicSubscription("izimate-events-to-fargate", {
   topic: eventsTopic.arn,
   protocol: "https",
-  endpoint: pulumi.interpolate`https://${alb.dnsName}/internal/events`,
+  endpoint: `https://${realtimeDomain}/internal/events`,
   endpointAutoConfirms: true,
 });
 

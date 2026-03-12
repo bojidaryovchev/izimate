@@ -1,5 +1,5 @@
 import * as aws from "@pulumi/aws";
-import { realtimeCert } from "./acm";
+import { realtimeCertValidation } from "./acm";
 import { albSg, publicSubnetA, publicSubnetB, vpc } from "./vpc";
 
 // Application Load Balancer
@@ -40,7 +40,7 @@ new aws.lb.Listener("izimate-alb-https", {
   port: 443,
   protocol: "HTTPS",
   sslPolicy: "ELBSecurityPolicy-TLS13-1-2-2021-06",
-  certificateArn: realtimeCert.arn,
+  certificateArn: realtimeCertValidation.certificateArn,
   defaultActions: [
     {
       type: "forward",
