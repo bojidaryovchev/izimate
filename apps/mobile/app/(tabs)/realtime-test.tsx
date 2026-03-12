@@ -1,7 +1,15 @@
 import { getSocket } from "@izimate/api-client/socket";
 import { useChat, useNotifications, usePresence, useSocket } from "@izimate/api-client/socket/hooks";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput } from "react-native";
+import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+} from "react-native";
 
 import { Text, View } from "@/components/Themed";
 import { useAuth } from "@/lib/auth";

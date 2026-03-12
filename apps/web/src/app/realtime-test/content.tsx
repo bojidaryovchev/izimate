@@ -1,8 +1,8 @@
 "use client";
 
+import { useSocketReady } from "@/lib/socket-provider";
 import { getSocket } from "@izimate/api-client/socket";
 import { useChat, useNotifications, usePresence, useSocket } from "@izimate/api-client/socket/hooks";
-import { useSocketReady } from "@/lib/socket-provider";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 const ROOM_ID = "test-room";
