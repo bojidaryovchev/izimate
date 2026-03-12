@@ -24,21 +24,16 @@ new aws.route53.Record("izimate-web-www-dns", {
   records: ["2d39cb846c9ea33c.vercel-dns-017.com"],
 });
 
-// Vercel domain verification TXT records
-new aws.route53.Record("izimate-vercel-verify-apex", {
+// Vercel domain verification TXT records (both apex + www verified at _vercel.izimate.com)
+new aws.route53.Record("izimate-vercel-verify", {
   zoneId: zoneId,
   name: `_vercel.${domain}`,
   type: "TXT",
   ttl: 300,
-  records: ["vc-domain-verify=izimate.com,c37d0b1c792d8f542c83"],
-});
-
-new aws.route53.Record("izimate-vercel-verify-www", {
-  zoneId: zoneId,
-  name: `_vercel.www.${domain}`,
-  type: "TXT",
-  ttl: 300,
-  records: ["vc-domain-verify=www.izimate.com,707f43c051e136f2ea79"],
+  records: [
+    "vc-domain-verify=izimate.com,c37d0b1c792d8f542c83",
+    "vc-domain-verify=www.izimate.com,707f43c051e136f2ea79",
+  ],
 });
 
 // api.izimate.com → API Gateway
