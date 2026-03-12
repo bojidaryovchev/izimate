@@ -13,6 +13,10 @@ export function configureSocket(cfg: SocketConfig) {
   config = cfg;
 }
 
+export function isConfigured(): boolean {
+  return config !== null;
+}
+
 export function getSocket(namespace = "/"): Socket {
   if (!config) throw new Error("Socket not configured. Call configureSocket() first.");
 

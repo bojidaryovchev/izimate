@@ -1,10 +1,14 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Socket } from "socket.io-client";
 import { getSocket } from "./index.js";
 
-/** Generic hook — returns a connected socket for any namespace and auto-cleans listeners. */
+/** Generic hook — returns a connected socket for any namespace. */
 export function useSocket(namespace = "/"): Socket {
-  return getSocket(namespace);
+  const socketRef = useRef<Socket | null>(null);
+  if (!socketRef.current) {
+    socketRef.current = getSocket(namespace);
+  }
+  return socketRef.current;
 }
 
 // ─── Presence ────────────────────────────────────────────────────────────────
@@ -15,10 +19,9 @@ export interface PresenceEvent {
 
 export function usePresence() {
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
-  const socketRef = useRef(getSocket("/presence"));
 
   useEffect(() => {
-    const socket = socketRef.current;
+    const socket = getSocket("/presence");
 
     const handleOnline = (data: PresenceEvent) => {
       setOnlineUsers((prev) => new Set(prev).add(data.userId));
@@ -53,12 +56,13 @@ export interface Notification {
 
 export function useNotifications(onNotification?: (notification: Notification) => void) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
-  const socketRef = useRef(getSocket("/notifications"));
+  const socketRef = useRef<Socket | null>(null);
   const callbackRef = useRef(onNotification);
   callbackRef.current = onNotification;
 
   useEffect(() => {
-    const socket = socketRef.current;
+    const socket = getSocket("/notifications");
+    socketRef.current = socket;
 
     const handleNew = (data: Notification) => {
       setNotifications((prev) => [data, ...prev]);
@@ -79,7 +83,7 @@ export function useNotifications(onNotification?: (notification: Notification) =
   }, []);
 
   const markRead = (notificationId: string) => {
-    socketRef.current.emit("notification:read", { notificationId });
+    socketRef.current?.emit("notification:read", { notificationId });
   };
 
   return { notifications, markRead };
@@ -101,10 +105,11 @@ export interface TypingEvent {
 export function useChat(roomId: string) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
-  const socketRef = useRef(getSocket("/chat"));
+  const socketRef = useRef<Socket | null>(null);
 
   useEffect(() => {
-    const socket = socketRef.current;
+    const socket = getSocket("/chat");
+    socketRef.current = socket;
     socket.emit("room:join", roomId);
 
     const handleMessage = (data: ChatMessage) => {
@@ -148,19 +153,19 @@ export function useChat(roomId: string) {
   }, [roomId]);
 
   const sendMessage = (message: unknown) => {
-    socketRef.current.emit("message:send", { roomId, message });
+    socketRef.current?.emit("message:send", { roomId, message });
   };
 
   const startTyping = () => {
-    socketRef.current.emit("typing:start", { roomId });
+    socketRef.current?.emit("typing:start", { roomId });
   };
 
   const stopTyping = () => {
-    socketRef.current.emit("typing:stop", { roomId });
+    socketRef.current?.emit("typing:stop", { roomId });
   };
 
   const markRead = (messageId: string) => {
-    socketRef.current.emit("message:read", { roomId, messageId });
+    socketRef.current?.emit("message:read", { roomId, messageId });
   };
 
   return { messages, typingUsers, sendMessage, startTyping, stopTyping, markRead };

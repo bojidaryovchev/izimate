@@ -1,9 +1,15 @@
 "use client";
 
 import { configureSocket, connectAll, disconnectAll, getSocket } from "@izimate/api-client";
-import { useEffect, type PropsWithChildren } from "react";
+import { createContext, useContext, useEffect, useState, type PropsWithChildren } from "react";
 
 const REALTIME_URL = process.env.NEXT_PUBLIC_REALTIME_URL!;
+
+const SocketReadyContext = createContext(false);
+
+export function useSocketReady() {
+  return useContext(SocketReadyContext);
+}
 
 async function fetchToken(): Promise<string> {
   const res = await fetch("/api/token");
@@ -13,6 +19,8 @@ async function fetchToken(): Promise<string> {
 }
 
 export function SocketProvider({ children }: PropsWithChildren) {
+  const [ready, setReady] = useState(false);
+
   useEffect(() => {
     if (!REALTIME_URL) return;
 
@@ -27,6 +35,7 @@ export function SocketProvider({ children }: PropsWithChildren) {
         getSocket("/notifications");
         getSocket("/chat");
         connectAll();
+        setReady(true);
       })
       .catch(() => {
         // Not authenticated — skip socket connection
@@ -38,5 +47,5 @@ export function SocketProvider({ children }: PropsWithChildren) {
     };
   }, []);
 
-  return <>{children}</>;
+  return <SocketReadyContext.Provider value={ready}>{children}</SocketReadyContext.Provider>;
 }

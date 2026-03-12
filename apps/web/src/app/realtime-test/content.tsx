@@ -2,6 +2,7 @@
 
 import { getSocket } from "@izimate/api-client/socket";
 import { useChat, useNotifications, usePresence, useSocket } from "@izimate/api-client/socket/hooks";
+import { useSocketReady } from "@/lib/socket-provider";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 const ROOM_ID = "test-room";
@@ -234,6 +235,16 @@ function EventLog() {
 }
 
 export default function RealtimeTestContent() {
+  const ready = useSocketReady();
+
+  if (!ready) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-zinc-50 dark:bg-black">
+        <p className="text-sm text-zinc-500">Connecting to realtime server&hellip;</p>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-zinc-50 p-8 dark:bg-black">
       <div className="mx-auto max-w-2xl space-y-6">
