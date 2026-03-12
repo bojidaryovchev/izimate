@@ -2,3 +2,11 @@ config:
   aws:region: eu-central-1
   aws:profile: izimate
   izimate:domain: izimate.com
+  # One-time setup (values stored encrypted after running):
+  #   pulumi config set izimate:githubRepo your-org/izimate
+  #   pulumi config set izimate:auth0Domain your-tenant.auth0.com
+  #   pulumi config set izimate:auth0WebClientId <value>
+  #   pulumi config set izimate:auth0Audience <value>
+  #   pulumi config set --secret izimate:auth0WebClientSecret <value>
+  #   pulumi config set --secret izimate:auth0Secret <value>
+  #   pulumi config set --secret vercel:apiToken <value>

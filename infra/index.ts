@@ -28,6 +28,9 @@ import "./acm";
 // DNS
 import "./dns";
 
+// Vercel (Next.js web)
+import { vercelProject } from "./vercel";
+
 // Secrets
 // import "./ssm"; // uncomment when Stripe keys are configured via `pulumi config set --secret`
 
@@ -63,3 +66,4 @@ export const albDnsName = alb.dnsName;
 export const ecrRepoUrl = ecrRepo.repositoryUrl;
 export const ecsClusterName = cluster.name;
 export const ecsServiceName = service.name;
+export const vercelProjectId = vercelProject.id;

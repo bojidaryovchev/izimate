@@ -2,4 +2,23 @@ config:
   aws:region: eu-central-1
   aws:profile: izimate
   izimate:domain: izimate.com
+  # One-time setup (values stored encrypted after running):
+  #   pulumi config set izimate:githubRepo your-org/izimate
+  #   pulumi config set izimate:auth0Domain your-tenant.auth0.com
+  #   pulumi config set izimate:auth0WebClientId <value>
+  #   pulumi config set izimate:auth0Audience <value>
+  #   pulumi config set --secret izimate:auth0WebClientSecret <value>
+  #   pulumi config set --secret izimate:auth0Secret <value>
+  #   pulumi config set --secret vercel:apiToken <value>
+
+  izimate:githubRepo: bojidaryovchev/izimate
+  izimate:auth0Domain: dev-jcya8ymq1mu144dn.eu.auth0.com
+  izimate:auth0WebClientId: mXPWr7sLTwJ48AHmYkoxOuQEvth3nIoR
+  izimate:auth0Audience: https://api.izimate.com
+  izimate:auth0WebClientSecret:
+    secure: v1:xpj7fYIBbTPVWolK:fpKBidgfBBBZrdNiHRsmVwfi1w/Yb60cKk/1qMIMjY2QjFT6MehMOEuDhW/mwv5wUXxab6k7IF9w9mtCe0HODAnMff99c10RVJZoNtalzRU=
+  izimate:auth0Secret:
+    secure: v1:JKTwNuLipVIo56+6:CfVt9BAttQXyZMJTQkyl5/41Ry5QED3QfxhGb9+GtFRJhceBv05MNgefrNmwYwqGSLfOets+2Pqm3ovpeTkire4Uc2PpzlvaJDK4V03rMeY=
+  vercel:apiToken:
+    secure: v1:y9o6CEd5iza3RYes:mONjboHtluhujwaFYdJTy+5O0+d1SJ5zKIgdoPCSyOwvyiiywknRAmzldcQXaW1ypFdZQNnSDt7FEYw21XsEhxh9oW9XZlY7yZCoVA==
 encryptionsalt: v1:qsM9zeE+J6Q=:v1:iryQ3xLeTtGOs7Tx:KOxrptEcAIf/tGwHmvw4fWCnyOi0ng==
