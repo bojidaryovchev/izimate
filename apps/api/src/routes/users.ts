@@ -1,6 +1,20 @@
-import { eq, getDb, users } from "@izimate/db";
+import { eq, getDb, pushTokens, users } from "@izimate/db";
 import { UpdateUserSchema, UserSchema } from "@izimate/shared";
 import type { FastifyPluginAsync } from "fastify";
+import { z } from "zod";
+
+class HttpError extends Error {
+  statusCode: number;
+  constructor(statusCode: number, message: string) {
+    super(message);
+    this.statusCode = statusCode;
+  }
+}
+
+const PushTokenBody = z.object({
+  token: z.string().min(1),
+  platform: z.enum(["ios", "android"]),
+});
 
 export const usersRoutes: FastifyPluginAsync = async (app) => {
   // GET /api/users/me — return current user (upsert on first login)
@@ -46,7 +60,7 @@ export const usersRoutes: FastifyPluginAsync = async (app) => {
       body: UpdateUserSchema,
       response: { 200: UserSchema },
     },
-    handler: async (req, reply) => {
+    handler: async (req) => {
       const db = getDb(process.env.DATABASE_URL!);
       const auth0Id = req.userId;
 
@@ -58,10 +72,38 @@ export const usersRoutes: FastifyPluginAsync = async (app) => {
         .returning();
 
       if (!updated) {
-        return (reply as any).code(404).send();
+        throw new HttpError(404, "User not found");
       }
 
       return updated;
+    },
+  });
+
+  // POST /api/users/push-token — register/update a device push token
+  app.post("/push-token", {
+    schema: {
+      body: PushTokenBody,
+      response: { 200: z.object({ ok: z.boolean() }) },
+    },
+    handler: async (req) => {
+      const db = getDb(process.env.DATABASE_URL!);
+      const auth0Id = req.userId;
+
+      // Resolve the internal user ID from auth0Id
+      const [user] = await db.select({ id: users.id }).from(users).where(eq(users.auth0Id, auth0Id)).limit(1);
+      if (!user) throw new Error("User not found");
+
+      const { token, platform } = req.body as z.infer<typeof PushTokenBody>;
+
+      await db
+        .insert(pushTokens)
+        .values({ userId: user.id, token, platform })
+        .onConflictDoUpdate({
+          target: pushTokens.token,
+          set: { userId: user.id, platform, updatedAt: new Date() },
+        });
+
+      return { ok: true };
     },
   });
 };

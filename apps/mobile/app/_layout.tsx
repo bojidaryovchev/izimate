@@ -7,7 +7,8 @@ import { useEffect } from "react";
 import "react-native-reanimated";
 
 import { useColorScheme } from "@/components/useColorScheme";
-import { AuthProvider } from "@/lib/auth";
+import { AuthProvider, useAuth } from "@/lib/auth";
+import { usePushNotifications } from "@/lib/notifications";
 
 const queryClient = new QueryClient();
 
@@ -50,6 +51,9 @@ export default function RootLayout() {
 
 function RootLayoutNav() {
   const colorScheme = useColorScheme();
+  const { token } = useAuth();
+
+  usePushNotifications(!!token);
 
   return (
     <QueryClientProvider client={queryClient}>

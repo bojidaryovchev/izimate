@@ -1,4 +1,4 @@
-import { eq, getDb, pushReceipts, pushTokens } from "@izimate/db";
+import { eq, getDb, pushReceipts, pushTokens, users } from "@izimate/db";
 import type { SQSHandler } from "aws-lambda";
 import Expo, { type ExpoPushMessage, type ExpoPushTicket } from "expo-server-sdk";
 
@@ -18,6 +18,18 @@ export const handler: SQSHandler = async (event) => {
   for (const record of event.Records) {
     const job: PushJob = JSON.parse(record.body);
     const { userId, title, body, data } = job;
+
+    // 8.6: Online/offline gating — skip push for online users (they get realtime)
+    const [user] = await db
+      .select({ isOnline: users.isOnline })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    if (user?.isOnline) {
+      console.log(`User ${userId} is online, skipping push (realtime delivery)`);
+      continue;
+    }
 
     // 1. Look up all push tokens for this user
     const tokens = await db.select().from(pushTokens).where(eq(pushTokens.userId, userId));
