@@ -1,8 +1,21 @@
+import { eq, getDb, users } from "@izimate/db";
 import type { FastifyBaseLogger } from "fastify";
 import type { Server } from "socket.io";
 
+const DATABASE_URL = process.env.DATABASE_URL;
+
 export function registerPresenceNamespace(io: Server, log: FastifyBaseLogger) {
+  const db = DATABASE_URL ? getDb(DATABASE_URL) : null;
   const nsp = io.of("/presence");
+
+  async function setOnlineFlag(userId: string, isOnline: boolean) {
+    if (!db) return;
+    try {
+      await db.update(users).set({ isOnline, updatedAt: new Date() }).where(eq(users.id, userId));
+    } catch (err) {
+      log.error(err, `[/presence] Failed to update is_online for user ${userId}`);
+    }
+  }
 
   nsp.on("connection", async (socket) => {
     const userId = socket.data.userId as string;
@@ -11,7 +24,8 @@ export function registerPresenceNamespace(io: Server, log: FastifyBaseLogger) {
     // Join user's personal presence room
     socket.join(`user:${userId}`);
 
-    // Broadcast online status to everyone else
+    // Mark user online in DB and broadcast to peers
+    await setOnlineFlag(userId, true);
     socket.broadcast.emit("user:online", { userId });
 
     // Client requests the current online list after attaching its listeners
@@ -28,6 +42,7 @@ export function registerPresenceNamespace(io: Server, log: FastifyBaseLogger) {
       // Check if user has other active connections in this namespace
       const sockets = await nsp.in(`user:${userId}`).fetchSockets();
       if (sockets.length === 0) {
+        await setOnlineFlag(userId, false);
         nsp.emit("user:offline", { userId });
       }
     });
