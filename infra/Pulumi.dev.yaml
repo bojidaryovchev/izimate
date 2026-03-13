@@ -22,4 +22,8 @@ config:
   vercel:apiToken:
     secure: v1:y9o6CEd5iza3RYes:mONjboHtluhujwaFYdJTy+5O0+d1SJ5zKIgdoPCSyOwvyiiywknRAmzldcQXaW1ypFdZQNnSDt7FEYw21XsEhxh9oW9XZlY7yZCoVA==
   izimate:hostedZoneId: Z050857227WWERAOAPPFE
+  izimate:databaseUrl:
+    secure: v1:IVQTyjr9jsOWLiM/:vfCjdnL4T26RI9Jvh7VkCkWMHWIZN5cZ2fVbdbQ5ga+U2tnISUHWUQ2W3Bnn1qsjQvttzEGQRqkP1laexPbIpiuOpk9b4k5fyTPByrGyh7Wu1U2+dDz/omWu8n15hCrm337k+LZ28kisq5rGDmlEQhhjWukQ2F0SkRNv02HhqX0KisRLbhUxuHPlYt7pKDfIW35kwz0l9IhQaYbPrYdgDBG7abiFsHXb
+  izimate:resendApiKey:
+    secure: v1:BsuzJ5FTrhPJ0nfc:hLRTtF6/78Z1/VrBMjzhgdAGtp2wn+0KHMSe22RP0Y1fbzf+SU5i0NzeIyfCRgBsbP1lKg==
 encryptionsalt: v1:qsM9zeE+J6Q=:v1:iryQ3xLeTtGOs7Tx:KOxrptEcAIf/tGwHmvw4fWCnyOi0ng==

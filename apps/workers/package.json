@@ -8,6 +8,11 @@
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
   },
+  "dependencies": {
+    "@izimate/db": "workspace:*",
+    "expo-server-sdk": "^3.13.0",
+    "resend": "^4.1.0"
+  },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.161"
   }

@@ -1,6 +1,7 @@
 import * as aws from "@pulumi/aws";
 import * as pulumi from "@pulumi/pulumi";
 import { httpApi } from "./api-gateway";
+import { auth0Audience, auth0Domain, databaseUrl, resendApiKey } from "./config";
 import { eventsTopic } from "./sns";
 import { emailQueue, pushQueue } from "./sqs";
 
@@ -71,6 +72,12 @@ export const apiFunction = new aws.lambda.Function("izimate-api", {
   environment: {
     variables: {
       NODE_ENV: "production",
+      DATABASE_URL: databaseUrl,
+      AUTH0_DOMAIN: auth0Domain,
+      AUTH0_AUDIENCE: auth0Audience,
+      EMAIL_QUEUE_URL: emailQueue.url,
+      PUSH_QUEUE_URL: pushQueue.url,
+      EVENTS_TOPIC_ARN: eventsTopic.arn,
     },
   },
   tags: { Name: "izimate-api" },
@@ -103,7 +110,7 @@ new aws.lambda.Permission("izimate-api-apigw-permission", {
 export const emailWorker = new aws.lambda.Function("izimate-email-worker", {
   runtime: "nodejs22.x",
   architectures: ["arm64"],
-  handler: "index.handler",
+  handler: "index.emailHandler",
   role: lambdaRole.arn,
   memorySize: 256,
   timeout: 60,
@@ -111,6 +118,8 @@ export const emailWorker = new aws.lambda.Function("izimate-email-worker", {
   environment: {
     variables: {
       NODE_ENV: "production",
+      RESEND_API_KEY: resendApiKey,
+      FROM_EMAIL: "noreply@izimate.com",
     },
   },
   tags: { Name: "izimate-email-worker" },
@@ -119,7 +128,7 @@ export const emailWorker = new aws.lambda.Function("izimate-email-worker", {
 export const pushWorker = new aws.lambda.Function("izimate-push-worker", {
   runtime: "nodejs22.x",
   architectures: ["arm64"],
-  handler: "index.handler",
+  handler: "index.pushHandler",
   role: lambdaRole.arn,
   memorySize: 256,
   timeout: 60,
@@ -127,6 +136,7 @@ export const pushWorker = new aws.lambda.Function("izimate-push-worker", {
   environment: {
     variables: {
       NODE_ENV: "production",
+      DATABASE_URL: databaseUrl,
     },
   },
   tags: { Name: "izimate-push-worker" },
@@ -168,7 +178,7 @@ new aws.iam.RolePolicy("izimate-worker-sqs-policy", {
 export const pushReceiptsCron = new aws.lambda.Function("izimate-push-receipts", {
   runtime: "nodejs22.x",
   architectures: ["arm64"],
-  handler: "index.handler",
+  handler: "index.pushReceiptsHandler",
   role: lambdaRole.arn,
   memorySize: 256,
   timeout: 60,
@@ -176,6 +186,7 @@ export const pushReceiptsCron = new aws.lambda.Function("izimate-push-receipts",
   environment: {
     variables: {
       NODE_ENV: "production",
+      DATABASE_URL: databaseUrl,
     },
   },
   tags: { Name: "izimate-push-receipts" },
@@ -184,7 +195,7 @@ export const pushReceiptsCron = new aws.lambda.Function("izimate-push-receipts",
 export const cleanupCron = new aws.lambda.Function("izimate-cleanup", {
   runtime: "nodejs22.x",
   architectures: ["arm64"],
-  handler: "index.handler",
+  handler: "index.cleanupHandler",
   role: lambdaRole.arn,
   memorySize: 256,
   timeout: 60,
@@ -192,6 +203,7 @@ export const cleanupCron = new aws.lambda.Function("izimate-cleanup", {
   environment: {
     variables: {
       NODE_ENV: "production",
+      DATABASE_URL: databaseUrl,
     },
   },
   tags: { Name: "izimate-cleanup" },

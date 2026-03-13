@@ -8,3 +8,6 @@ export const realtimeDomain = `realtime.${domain}`;
 
 export const auth0Domain = config.require("auth0Domain");
 export const auth0Audience = config.require("auth0Audience");
+
+export const databaseUrl = config.requireSecret("databaseUrl");
+export const resendApiKey = config.requireSecret("resendApiKey");

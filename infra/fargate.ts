@@ -1,7 +1,7 @@
 import * as aws from "@pulumi/aws";
 import * as pulumi from "@pulumi/pulumi";
 import { fargateTargetGroup } from "./alb";
-import { auth0Audience, auth0Domain } from "./config";
+import { auth0Audience, auth0Domain, databaseUrl } from "./config";
 import { redisHost, redisPort } from "./elasticache";
 import { emailQueue, pushQueue } from "./sqs";
 import { fargateSg, publicSubnetA, publicSubnetB } from "./vpc";
@@ -91,8 +91,8 @@ const taskDefinition = new aws.ecs.TaskDefinition("izimate-realtime-task", {
   executionRoleArn: taskExecutionRole.arn,
   taskRoleArn: taskRole.arn,
   containerDefinitions: pulumi
-    .all([ecrRepo.repositoryUrl, redisHost, redisPort, logGroup.name])
-    .apply(([repoUrl, rHost, rPort, logName]) =>
+    .all([ecrRepo.repositoryUrl, redisHost, redisPort, logGroup.name, databaseUrl, auth0Domain, auth0Audience])
+    .apply(([repoUrl, rHost, rPort, logName, dbUrl, a0Domain, a0Audience]) =>
       JSON.stringify([
         {
           name: "realtime",
@@ -103,8 +103,9 @@ const taskDefinition = new aws.ecs.TaskDefinition("izimate-realtime-task", {
             { name: "NODE_ENV", value: "production" },
             { name: "PORT", value: "3001" },
             { name: "REDIS_URL", value: `redis://${rHost}:${rPort}` },
-            { name: "AUTH0_DOMAIN", value: auth0Domain },
-            { name: "AUTH0_AUDIENCE", value: auth0Audience },
+            { name: "AUTH0_DOMAIN", value: a0Domain },
+            { name: "AUTH0_AUDIENCE", value: a0Audience },
+            { name: "DATABASE_URL", value: dbUrl },
           ],
           logConfiguration: {
             logDriver: "awslogs",
