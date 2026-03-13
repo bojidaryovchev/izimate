@@ -1,3 +1,4 @@
+import Constants from "expo-constants";
 import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
 import { type Href, router } from "expo-router";
@@ -36,7 +37,7 @@ async function registerForPushNotifications(): Promise<string | null> {
     return null;
   }
 
-  const projectId = process.env.EXPO_PUBLIC_PROJECT_ID;
+  const projectId = Constants.expoConfig?.extra?.eas?.projectId;
   const tokenData = await Notifications.getExpoPushTokenAsync({
     projectId,
   });
