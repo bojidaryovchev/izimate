@@ -37,8 +37,8 @@ export default function SearchPage() {
       const res = await clientApiFetch(`/api/search?q=${encodeURIComponent(query.trim())}&limit=20`);
       if (!res.ok) throw new Error(`Search failed: ${res.status}`);
       const data: SearchResponse = await res.json();
-      setResults(data.results);
-      setTotal(data.total);
+      setResults(data.results ?? []);
+      setTotal(data.total ?? 0);
       setSearched(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Search failed");

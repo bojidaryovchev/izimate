@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState, useRef } from "react";
-import { uploadFile } from "@/lib/uploads";
+import { clientApiFetch } from "@/lib/client-api";
 
 export default function UploadsPage() {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -17,8 +17,28 @@ export default function UploadsPage() {
     try {
       setUploading(true);
       setError(null);
-      const res = await uploadFile(file);
-      setResult(res);
+
+      // Get presigned URL
+      const presignRes = await clientApiFetch("/api/uploads/presign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filename: file.name,
+          contentType: file.type,
+          contentLength: file.size,
+        }),
+      });
+      if (!presignRes.ok) throw new Error(`Presign failed: ${presignRes.status}`);
+      const { uploadUrl, publicUrl, key } = await presignRes.json();
+
+      // Upload directly to R2
+      await fetch(uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+
+      setResult({ publicUrl, key });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");
     } finally {

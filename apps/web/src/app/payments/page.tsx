@@ -21,9 +21,13 @@ export default function PaymentsPage() {
           cancelUrl: `${window.location.origin}/payments?status=cancelled`,
         }),
       });
-      if (!res.ok) throw new Error(`Checkout failed: ${res.status}`);
+      if (!res.ok) {
+        const body = await res.text();
+        throw new Error(`Checkout failed (${res.status}): ${body}`);
+      }
       const { url } = await res.json();
-      window.open(url, "_blank");
+      if (!url) throw new Error("No checkout URL returned");
+      window.location.href = url;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Checkout failed");
     } finally {
@@ -43,9 +47,13 @@ export default function PaymentsPage() {
           refreshUrl: `${window.location.origin}/payments?connect=refresh`,
         }),
       });
-      if (!res.ok) throw new Error(`Connect setup failed: ${res.status}`);
+      if (!res.ok) {
+        const body = await res.text();
+        throw new Error(`Connect setup failed (${res.status}): ${body}`);
+      }
       const { url } = await res.json();
-      window.open(url, "_blank");
+      if (!url) throw new Error("No connect URL returned");
+      window.location.href = url;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Connect setup failed");
     } finally {
