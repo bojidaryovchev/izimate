@@ -1,6 +1,10 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL!;
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_URL || "https://api.izimate.com";
 
-export async function clientApiFetch(path: string, init?: RequestInit): Promise<Response> {
+export async function clientApiFetch(
+  path: string,
+  init?: RequestInit,
+): Promise<Response> {
   const { token } = await fetch("/api/token").then((r) => r.json());
   const headers = new Headers(init?.headers);
   if (token) {

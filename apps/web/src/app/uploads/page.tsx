@@ -28,15 +28,20 @@ export default function UploadsPage() {
           contentLength: file.size,
         }),
       });
-      if (!presignRes.ok) throw new Error(`Presign failed: ${presignRes.status}`);
+      if (!presignRes.ok) {
+        const body = await presignRes.text();
+        throw new Error(`Presign failed (${presignRes.status}): ${body}`);
+      }
       const { uploadUrl, publicUrl, key } = await presignRes.json();
+      if (!uploadUrl) throw new Error("No upload URL returned from presign");
 
       // Upload directly to R2
-      await fetch(uploadUrl, {
+      const putRes = await fetch(uploadUrl, {
         method: "PUT",
         headers: { "Content-Type": file.type },
         body: file,
       });
+      if (!putRes.ok) throw new Error(`Upload to R2 failed (${putRes.status})`);
 
       setResult({ publicUrl, key });
     } catch (err) {
