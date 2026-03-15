@@ -1,5 +1,10 @@
+import { render } from "@react-email/components";
 import type { SQSHandler } from "aws-lambda";
+import type { ReactElement } from "react";
 import { Resend } from "resend";
+import { NotificationEmail } from "./emails/notification.js";
+import { PasswordResetEmail } from "./emails/password-reset.js";
+import { WelcomeEmail } from "./emails/welcome.js";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM_EMAIL = process.env.FROM_EMAIL ?? "noreply@izimate.com";
@@ -21,27 +26,19 @@ function getSubject(template: string, data: Record<string, unknown>): string {
   return fn ? fn(data) : `iZimate — ${template}`;
 }
 
-function renderTemplate(template: string, data: Record<string, unknown>): string {
+function getEmailComponent(template: string, data: Record<string, unknown>): ReactElement | null {
   switch (template) {
     case "welcome":
-      return `
-        <h1>Welcome to iZimate, ${data.name ?? ""}!</h1>
-        <p>We're excited to have you on board. Start exploring and connecting with others.</p>
-      `;
+      return WelcomeEmail({ name: (data.name as string) ?? "" });
     case "password-reset":
-      return `
-        <h1>Reset Your Password</h1>
-        <p>Click the link below to reset your password:</p>
-        <a href="${data.resetUrl ?? "#"}">Reset Password</a>
-        <p>This link expires in 1 hour.</p>
-      `;
+      return PasswordResetEmail({ resetUrl: (data.resetUrl as string) ?? "#" });
     case "notification":
-      return `
-        <h1>${data.title ?? "Notification"}</h1>
-        <p>${data.body ?? ""}</p>
-      `;
+      return NotificationEmail({
+        title: (data.title as string) ?? "Notification",
+        body: (data.body as string) ?? "",
+      });
     default:
-      return `<p>${JSON.stringify(data)}</p>`;
+      return null;
   }
 }
 
@@ -52,11 +49,14 @@ export const handler: SQSHandler = async (event) => {
 
     console.log(`Sending email: template=${template} to=${to}`);
 
+    const component = getEmailComponent(template, data);
+    const html = component ? await render(component) : `<p>${JSON.stringify(data)}</p>`;
+
     const { error } = await resend.emails.send({
       from: FROM_EMAIL,
       to,
       subject: getSubject(template, data),
-      html: renderTemplate(template, data),
+      html,
     });
 
     if (error) {

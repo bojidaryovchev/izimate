@@ -25,11 +25,14 @@ import "./acm";
 // DNS
 import "./dns";
 
+// CDN (CloudFront → R2)
+import { uploadsCdn } from "./cdn";
+
 // Vercel (Next.js web)
 import { vercelProject } from "./vercel";
 
 // Secrets
-// import "./ssm"; // uncomment when Stripe keys are configured via `pulumi config set --secret`
+import "./ssm";
 
 // Alarms
 import "./alarms";
@@ -66,3 +69,5 @@ export const ecrRepoUrl = ecrRepo.repositoryUrl;
 export const ecsClusterName = cluster.name;
 export const ecsServiceName = service.name;
 export const vercelProjectId = vercelProject.id;
+export const uploadsCdnDomain = uploadsCdn.domainName;
+export const uploadsCdnId = uploadsCdn.id;

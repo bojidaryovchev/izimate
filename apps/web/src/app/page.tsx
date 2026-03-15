@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { auth0 } from "@/lib/auth0";
 
 export default async function Home() {
@@ -16,6 +17,22 @@ export default async function Home() {
             <pre className="max-w-full overflow-auto rounded bg-zinc-100 p-4 text-xs dark:bg-zinc-900">
               {JSON.stringify(session.user, null, 2)}
             </pre>
+            <nav className="flex w-full flex-col gap-2">
+              {[
+                { href: "/uploads", label: "Uploads", desc: "Image upload via R2" },
+                { href: "/search", label: "Search", desc: "Full-text search" },
+                { href: "/payments", label: "Payments", desc: "Stripe Checkout & Connect" },
+              ].map((link) => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className="flex items-center justify-between rounded-lg border border-zinc-200 px-4 py-3 transition-colors hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900"
+                >
+                  <span className="font-medium text-black dark:text-white">{link.label}</span>
+                  <span className="text-sm text-zinc-500 dark:text-zinc-400">{link.desc}</span>
+                </Link>
+              ))}
+            </nav>
             <a
               href="/auth/logout"
               className="flex h-12 w-full items-center justify-center rounded-full border border-red-200 px-5 text-red-600 transition-colors hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950"

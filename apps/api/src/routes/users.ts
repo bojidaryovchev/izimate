@@ -1,4 +1,5 @@
 import { eq, getDb, pushTokens, users } from "@izimate/db";
+import { queueEmail } from "@izimate/db/queue";
 import { UpdateUserSchema, UserSchema } from "@izimate/shared";
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
@@ -49,6 +50,9 @@ export const usersRoutes: FastifyPluginAsync = async (app) => {
           },
         })
         .returning();
+
+      // Queue welcome email for new users
+      await queueEmail(newUser.email, "welcome", { name: newUser.name });
 
       return newUser;
     },

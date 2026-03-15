@@ -101,6 +101,57 @@ export default function TabLayout() {
           ),
         }}
       />
+      <Tabs.Screen
+        name="uploads"
+        options={{
+          title: "Uploads",
+          tabBarIcon: ({ color }) => (
+            <SymbolView
+              name={{
+                ios: "photo.on.rectangle",
+                android: "image",
+                web: "image",
+              }}
+              tintColor={color}
+              size={28}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="search"
+        options={{
+          title: "Search",
+          tabBarIcon: ({ color }) => (
+            <SymbolView
+              name={{
+                ios: "magnifyingglass",
+                android: "search",
+                web: "search",
+              }}
+              tintColor={color}
+              size={28}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="payments"
+        options={{
+          title: "Payments",
+          tabBarIcon: ({ color }) => (
+            <SymbolView
+              name={{
+                ios: "creditcard",
+                android: "credit_card",
+                web: "credit_card",
+              }}
+              tintColor={color}
+              size={28}
+            />
+          ),
+        }}
+      />
     </Tabs>
   );
 }

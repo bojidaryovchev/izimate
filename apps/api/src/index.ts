@@ -2,9 +2,13 @@ import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import { APP_NAME } from "@izimate/shared";
 import Fastify, { type FastifyError } from "fastify";
+import rawBody from "fastify-raw-body";
 import { serializerCompiler, validatorCompiler, type ZodTypeProvider } from "fastify-type-provider-zod";
 import { ZodError } from "zod";
 import { authPlugin } from "./middleware/auth.js";
+import { paymentsRoutes } from "./routes/payments.js";
+import { searchRoutes } from "./routes/search.js";
+import { uploadsRoutes } from "./routes/uploads.js";
 import { usersRoutes } from "./routes/users.js";
 import { webhookRoutes } from "./routes/webhooks.js";
 
@@ -12,6 +16,9 @@ export async function buildApp() {
   const app = Fastify({ logger: true }).withTypeProvider<ZodTypeProvider>();
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
+
+  // --- Raw body for webhook signature verification ---
+  await app.register(rawBody, { field: "rawBody", global: false, runFirst: true });
 
   // --- CORS ---
   await app.register(cors, { origin: ["https://izimate.com", /localhost/] });
@@ -82,6 +89,9 @@ export async function buildApp() {
   await app.register(async (authedApp) => {
     await authedApp.register(authPlugin);
     await authedApp.register(usersRoutes, { prefix: "/api/users" });
+    await authedApp.register(uploadsRoutes, { prefix: "/api/uploads" });
+    await authedApp.register(paymentsRoutes, { prefix: "/api/payments" });
+    await authedApp.register(searchRoutes, { prefix: "/api/search" });
   });
 
   return app;

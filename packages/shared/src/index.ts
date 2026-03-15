@@ -1,5 +1,8 @@
 export const APP_NAME = "izimate";
 
+// --- Image optimization ---
+export { optimizedImageUrl } from "./image.js";
+
 // --- User schemas ---
 export { UpdateUserSchema, UserSchema, type UpdateUser, type User } from "./schemas/users.js";
 

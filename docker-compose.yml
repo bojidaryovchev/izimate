@@ -1,0 +1,15 @@
+services:
+  stripe-cli:
+    image: stripe/stripe-cli:v1.37.3
+    container_name: izimate-stripe-cli
+    command:
+      - listen
+      - --api-key
+      - ${STRIPE_SECRET_KEY}
+      - --forward-to
+      - http://host.docker.internal:3001/webhooks/stripe
+      - --events
+      - checkout.session.completed,account.updated
+    extra_hosts:
+      - "host.docker.internal:host.gateway"
+    restart: unless-stopped

@@ -20,11 +20,7 @@ export const handler: SQSHandler = async (event) => {
     const { userId, title, body, data } = job;
 
     // 8.6: Online/offline gating — skip push for online users (they get realtime)
-    const [user] = await db
-      .select({ isOnline: users.isOnline })
-      .from(users)
-      .where(eq(users.id, userId))
-      .limit(1);
+    const [user] = await db.select({ isOnline: users.isOnline }).from(users).where(eq(users.id, userId)).limit(1);
 
     if (user?.isOnline) {
       console.log(`User ${userId} is online, skipping push (realtime delivery)`);

@@ -1,7 +1,19 @@
 import * as aws from "@pulumi/aws";
 import * as pulumi from "@pulumi/pulumi";
 import { httpApi } from "./api-gateway";
-import { auth0Audience, auth0Domain, databaseUrl, resendApiKey } from "./config";
+import {
+  auth0Audience,
+  auth0Domain,
+  databaseUrl,
+  r2AccessKeyId,
+  r2AccountId,
+  r2Bucket,
+  r2SecretAccessKey,
+  resendApiKey,
+  stripeSecretKey,
+  stripeWebhookSecret,
+  uploadsDomain,
+} from "./config";
 import { eventsTopic } from "./sns";
 import { emailQueue, pushQueue } from "./sqs";
 
@@ -78,6 +90,13 @@ export const apiFunction = new aws.lambda.Function("izimate-api", {
       EMAIL_QUEUE_URL: emailQueue.url,
       PUSH_QUEUE_URL: pushQueue.url,
       EVENTS_TOPIC_ARN: eventsTopic.arn,
+      R2_ACCOUNT_ID: r2AccountId,
+      R2_ACCESS_KEY_ID: r2AccessKeyId,
+      R2_SECRET_ACCESS_KEY: r2SecretAccessKey,
+      R2_BUCKET: r2Bucket,
+      R2_PUBLIC_URL: `https://${uploadsDomain}`,
+      STRIPE_SECRET_KEY: stripeSecretKey,
+      STRIPE_WEBHOOK_SECRET: stripeWebhookSecret,
     },
   },
   tags: { Name: "izimate-api" },

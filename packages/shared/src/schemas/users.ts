@@ -6,6 +6,7 @@ export const UserSchema = z.object({
   email: z.email(),
   name: z.string(),
   avatarUrl: z.string().nullable(),
+  stripeConnectId: z.string().nullable(),
   isOnline: z.boolean(),
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date(),

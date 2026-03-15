@@ -2,6 +2,9 @@ import * as aws from "@pulumi/aws";
 import { apiDomain, domain, realtimeDomain } from "./config";
 import { zoneId } from "./zone";
 
+// Provider in us-east-1 — required for CloudFront certificates
+const usEast1 = new aws.Provider("us-east-1", { region: "us-east-1" });
+
 // ACM cert for api.izimate.com (used by API Gateway)
 export const apiCert = new aws.acm.Certificate("izimate-api-cert", {
   domainName: apiDomain,
@@ -23,6 +26,17 @@ export const wildcardCert = new aws.acm.Certificate("izimate-wildcard-cert", {
   tags: { Name: "izimate-wildcard-cert" },
 });
 
+// Wildcard cert in us-east-1 — required for CloudFront
+export const wildcardCertUsEast1 = new aws.acm.Certificate(
+  "izimate-wildcard-cert-us-east-1",
+  {
+    domainName: `*.${domain}`,
+    validationMethod: "DNS",
+    tags: { Name: "izimate-wildcard-cert-us-east-1" },
+  },
+  { provider: usEast1 },
+);
+
 // --- DNS validation records ---
 
 function createValidationRecords(name: string, cert: aws.acm.Certificate): aws.route53.Record {
@@ -39,6 +53,7 @@ function createValidationRecords(name: string, cert: aws.acm.Certificate): aws.r
 const apiValidationRecord = createValidationRecords("izimate-api-cert", apiCert);
 const realtimeValidationRecord = createValidationRecords("izimate-realtime-cert", realtimeCert);
 const wildcardValidationRecord = createValidationRecords("izimate-wildcard-cert", wildcardCert);
+const wildcardUsEast1ValidationRecord = createValidationRecords("izimate-wildcard-cert-us-east-1", wildcardCertUsEast1);
 
 // --- Wait for certificates to be validated ---
 
@@ -56,3 +71,12 @@ export const wildcardCertValidation = new aws.acm.CertificateValidation("izimate
   certificateArn: wildcardCert.arn,
   validationRecordFqdns: [wildcardValidationRecord.fqdn],
 });
+
+export const wildcardCertUsEast1Validation = new aws.acm.CertificateValidation(
+  "izimate-wildcard-cert-us-east-1-validation",
+  {
+    certificateArn: wildcardCertUsEast1.arn,
+    validationRecordFqdns: [wildcardUsEast1ValidationRecord.fqdn],
+  },
+  { provider: usEast1 },
+);
